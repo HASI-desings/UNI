@@ -407,13 +407,13 @@
   <!-- Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/service-worker.js').catch(err => {
+      navigator.serviceWorker.register('./service-worker.js').catch(err => {
         console.warn('Service Worker registration failed:', err);
       });
     }
   </script>
 
   <!-- Main App Script -->
-  <script type="module" src="./js/app.js"></script>
+  <script src="./js/app.js"></script>
 </body>
 </html>
