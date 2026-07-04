@@ -2,15 +2,8 @@
    SERVICE WORKER - OFFLINE SUPPORT & CACHING
    ============================================ */
 
-const CACHE_NAME = 'parallax-v1';
-const urlsToCache = [
-    '/',
-    '/index.html',
-    '/css/styles.css',
-    '/js/app.js',
-    '/manifest.json',
-    '/offline.html'
-];
+const CACHE_NAME = 'parallax-v2';
+const CORE_FILES = ['/', '/index.html', '/css/styles.css', '/js/app.js', '/js/hero-carousel.js', '/manifest.json', '/offline.html'];
 
 // ============================================
 // INSTALL EVENT
@@ -19,7 +12,7 @@ const urlsToCache = [
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(cache => cache.addAll(urlsToCache))
+            .then(cache => cache.addAll(CORE_FILES))
             .then(() => self.skipWaiting())
     );
 });
@@ -43,67 +36,49 @@ self.addEventListener('activate', event => {
 });
 
 // ============================================
-// FETCH EVENT - CACHE FIRST STRATEGY
+// FETCH EVENT — NETWORK-FIRST FOR APP CODE
 // ============================================
+// Cache-first was silently freezing every phone onto whatever version of
+// index.html/css/js was cached on first visit, even after new deploys.
+// Network-first means you always get the latest file when online, and
+// only fall back to cache when offline.
 
 self.addEventListener('fetch', event => {
     const { request } = event;
 
-    // Skip cross-origin requests
     if (!request.url.startsWith(self.location.origin)) {
         return;
     }
 
-    // Network first for API calls
     if (request.url.includes('/api/')) {
         event.respondWith(
             fetch(request)
                 .then(response => {
-                    // Clone the response
                     const clonedResponse = response.clone();
-                    caches.open(CACHE_NAME).then(cache => {
-                        cache.put(request, clonedResponse);
-                    });
+                    caches.open(CACHE_NAME).then(cache => cache.put(request, clonedResponse));
                     return response;
                 })
-                .catch(() => {
-                    return caches.match(request)
-                        .then(response => response || new Response('Offline', { status: 503 }));
-                })
+                .catch(() => caches.match(request).then(r => r || new Response('Offline', { status: 503 })))
         );
         return;
     }
 
-    // Cache first for static assets
     event.respondWith(
-        caches.match(request)
+        fetch(request)
             .then(response => {
-                if (response) {
+                if (!response || response.status !== 200 || response.type === 'error') {
                     return response;
                 }
-
-                return fetch(request)
-                    .then(response => {
-                        // Don't cache non-successful responses
-                        if (!response || response.status !== 200 || response.type === 'error') {
-                            return response;
-                        }
-
-                        // Clone the response
-                        const clonedResponse = response.clone();
-                        caches.open(CACHE_NAME).then(cache => {
-                            cache.put(request, clonedResponse);
-                        });
-
-                        return response;
-                    })
-                    .catch(() => {
-                        // Return offline page for navigation requests
-                        if (request.mode === 'navigate') {
-                            return caches.match('/offline.html');
-                        }
-                        return new Response('Offline', { status: 503 });
-                    });
+                const clonedResponse = response.clone();
+                caches.open(CACHE_NAME).then(cache => cache.put(request, clonedResponse));
+                return response;
+            })
+            .catch(() => {
+                return caches.match(request).then(cached => {
+                    if (cached) return cached;
+                    if (request.mode === 'navigate') return caches.match('/offline.html');
+                    return new Response('Offline', { status: 503 });
+                });
             })
     );
 });
