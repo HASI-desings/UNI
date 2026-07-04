@@ -1,16 +1,23 @@
 // ============================================
-// LANDING HERO — FIGURINE CAROUSEL
-// Vanilla JS port of the TOONHUB carousel mechanic
+// LANDING HERO — CHARACTER CAROUSEL
+// Each of the 5 users owns one character + one theme color.
+// This file is the single source of truth for that mapping —
+// the login screen and the dashboard both read from
+// `window.Parallax.CHARACTERS` so everything stays in sync.
 // ============================================
 
 (function () {
-    const IMAGES = [
-        { src: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/1.02464a56.png', bg: '#F4845F' },
-        { src: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/2.b977faab.png', bg: '#6BBF7A' },
-        { src: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/3.4df853b4.png', bg: '#E882B4' },
-        { src: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/4.4457fbce.png', bg: '#6EB5FF' },
+    // NOTE: only 4 distinct figurine assets exist, so Haroon
+    // reuses image #1's asset — his color is what sets him apart.
+    const CHARACTERS = [
+        { key: 'hussnain', name: 'Hussnain', color: '#8B5CF6', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/1.02464a56.png' },
+        { key: 'faizan', name: 'Faizan', color: '#3B82F6', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/2.b977faab.png' },
+        { key: 'alima', name: 'Alima', color: '#EC4899', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/3.4df853b4.png' },
+        { key: 'mahdiya', name: 'Mahdiya', color: '#F5C518', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/4.4457fbce.png' },
+        { key: 'haroon', name: 'Haroon', color: '#22C55E', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/1.02464a56.png' },
     ];
 
+    const COUNT = CHARACTERS.length;
     const ANIMATION_MS = 650;
     const ROLE_CLASS = {
         center: 'hero-carousel__item--center',
@@ -23,67 +30,91 @@
     let activeIndex = 0;
     let isAnimating = false;
     let itemEls = [];
-    let heroEl, trackEl, ghostEl;
+    let heroEl, trackEl, nameEl, discoverLabelEl;
     let initialized = false;
+    const changeListeners = [];
 
     function preloadImages() {
-        IMAGES.forEach((item) => {
+        const seen = new Set();
+        CHARACTERS.forEach((c) => {
+            if (seen.has(c.image)) return;
+            seen.add(c.image);
             const img = new Image();
-            img.src = item.src;
+            img.src = c.image;
         });
     }
 
+    // Roles for a 5-item ring: center, one left, one right, the rest "back".
     function rolesForIndex(index) {
-        return {
-            center: index,
-            left: (index + 3) % 4,
-            right: (index + 1) % 4,
-            back: (index + 2) % 4,
-        };
+        const left = (index + COUNT - 1) % COUNT;
+        const right = (index + 1) % COUNT;
+        const back = [];
+        for (let i = 0; i < COUNT; i++) {
+            if (i !== index && i !== left && i !== right) back.push(i);
+        }
+        return { center: index, left, right, back };
+    }
+
+    function applyTheme(character) {
+        const root = document.documentElement.style;
+        root.setProperty('--user-color', character.color);
+        root.setProperty('--color-background', `color-mix(in srgb, ${character.color} 14%, #040404)`);
+        root.setProperty('--color-primary', character.color);
     }
 
     function render() {
         const roles = rolesForIndex(activeIndex);
-        // roleByImageIndex[i] tells us which role image i currently plays
         const roleByImageIndex = {};
-        Object.entries(roles).forEach(([role, imgIndex]) => {
-            roleByImageIndex[imgIndex] = role;
-        });
+        roleByImageIndex[roles.center] = 'center';
+        roleByImageIndex[roles.left] = 'left';
+        roleByImageIndex[roles.right] = 'right';
+        roles.back.forEach((i) => { roleByImageIndex[i] = 'back'; });
 
         itemEls.forEach((el, i) => {
             const role = roleByImageIndex[i];
             el.classList.remove(...ALL_ROLE_CLASSES);
             el.classList.add(ROLE_CLASS[role]);
+            el.style.zIndex = role === 'back' ? String(5 - roles.back.indexOf(i)) : '';
         });
 
-        heroEl.style.backgroundColor = IMAGES[activeIndex].bg;
+        const active = CHARACTERS[activeIndex];
+        heroEl.style.backgroundColor = active.color;
+        if (nameEl) nameEl.textContent = active.name;
+        if (discoverLabelEl) discoverLabelEl.textContent = `Continue as ${active.name}`;
+        applyTheme(active);
+
+        changeListeners.forEach((fn) => fn(active));
+    }
+
+    function setActiveIndex(index, { animate = true } = {}) {
+        if (animate && isAnimating) return;
+        activeIndex = ((index % COUNT) + COUNT) % COUNT;
+        render();
+        if (animate) {
+            isAnimating = true;
+            window.setTimeout(() => { isAnimating = false; }, ANIMATION_MS);
+        }
+    }
+
+    function setActiveByKey(key, opts) {
+        const idx = CHARACTERS.findIndex((c) => c.key === key);
+        if (idx !== -1) setActiveIndex(idx, opts);
     }
 
     function navigate(direction) {
         if (isAnimating) return;
-        isAnimating = true;
-
-        activeIndex = direction === 'next'
-            ? (activeIndex + 1) % 4
-            : (activeIndex + 3) % 4;
-
-        render();
-
-        window.setTimeout(() => {
-            isAnimating = false;
-        }, ANIMATION_MS);
+        setActiveIndex(activeIndex + (direction === 'next' ? 1 : -1));
     }
 
     function buildItems() {
         trackEl.innerHTML = '';
-        itemEls = IMAGES.map((item, i) => {
+        itemEls = CHARACTERS.map((c) => {
             const el = document.createElement('div');
             el.className = 'hero-carousel__item';
-            el.dataset.index = String(i);
 
             const img = document.createElement('img');
-            img.src = item.src;
-            img.alt = '';
+            img.src = c.image;
+            img.alt = c.name;
             img.draggable = false;
 
             el.appendChild(img);
@@ -99,6 +130,9 @@
         trackEl = document.getElementById('hero-carousel-track');
         if (!heroEl || !trackEl) return;
 
+        nameEl = document.getElementById('hero-carousel-name');
+        discoverLabelEl = document.getElementById('hero-carousel-discover-label');
+
         preloadImages();
         buildItems();
         render();
@@ -112,4 +146,16 @@
     }
 
     document.addEventListener('DOMContentLoaded', init);
+
+    // Shared API consumed by app.js (login screen + dashboard theming)
+    window.Parallax = window.Parallax || {};
+    window.Parallax.CHARACTERS = CHARACTERS;
+    window.Parallax.getCharacter = (key) => CHARACTERS.find((c) => c.key === key);
+    window.Parallax.applyTheme = (key) => {
+        const c = window.Parallax.getCharacter(key);
+        if (c) applyTheme(c);
+    };
+    window.Parallax.setActiveByKey = setActiveByKey;
+    window.Parallax.getActiveCharacter = () => CHARACTERS[activeIndex];
+    window.Parallax.onCharacterChange = (fn) => changeListeners.push(fn);
 })();
