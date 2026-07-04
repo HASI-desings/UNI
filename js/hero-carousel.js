@@ -89,7 +89,6 @@
             const role = roleByImageIndex[i];
             el.classList.remove(...ALL_ROLE_CLASSES);
             el.classList.add(ROLE_CLASS[role]);
-            el.style.zIndex = role === 'back' ? String(5 - roles.back.indexOf(i)) : '';
         });
 
         const active = CHARACTERS[activeIndex];
