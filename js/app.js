@@ -63,6 +63,37 @@ function detectDeviceCapabilities() {
     return STATE.deviceCapabilities;
 }
 
+function updateCharacterPreview(key) {
+    const character = window.Parallax && window.Parallax.getCharacter(key);
+    const preview = document.getElementById('login-character-preview');
+    const img = document.getElementById('login-character-img');
+    const label = document.getElementById('login-character-label');
+    if (!preview || !character) return;
+
+    img.src = character.image;
+    img.alt = character.name;
+    label.textContent = character.name;
+    preview.style.borderColor = character.color;
+
+    if (window.Parallax) window.Parallax.applyTheme(key);
+}
+
+function handleUserSelectChange(userKey) {
+    if (!userKey) return;
+    updateCharacterPreview(userKey);
+    if (window.Parallax) window.Parallax.setActiveByKey(userKey, { animate: false });
+}
+
+function continueAsActiveCharacter() {
+    const active = window.Parallax && window.Parallax.getActiveCharacter();
+    if (active) {
+        const select = document.getElementById('user-select');
+        if (select) select.value = active.key;
+        updateCharacterPreview(active.key);
+    }
+    showScreen('login-screen');
+}
+
 // ============================================
 // SCREEN NAVIGATION
 // ============================================
@@ -126,6 +157,9 @@ function handleLogin(event) {
     // Store authentication
     STATE.currentUser = user;
     STATE.isAuthenticated = true;
+
+    // Lock in this user's character theme across the app
+    if (window.Parallax) window.Parallax.applyTheme(user);
 
     // Save to localStorage
     if (STATE.deviceCapabilities.hasLocalStorage) {
@@ -384,12 +418,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Detect device capabilities
     detectDeviceCapabilities();
 
+    // Seed the login preview with whichever character the hero starts on
+    if (window.Parallax) {
+        const active = window.Parallax.getActiveCharacter();
+        if (active) updateCharacterPreview(active.key);
+    }
+
     // Check if user is already logged in
     if (STATE.deviceCapabilities.hasLocalStorage) {
         const savedUser = localStorage.getItem(CONFIG.STORAGE_KEY_PREFIX + 'currentUser');
         if (savedUser) {
             STATE.currentUser = savedUser;
             STATE.isAuthenticated = true;
+            if (window.Parallax) window.Parallax.applyTheme(savedUser);
             document.getElementById('user-greeting').textContent = `Welcome, ${savedUser.charAt(0).toUpperCase() + savedUser.slice(1)}`;
             loadUserData();
             showScreen('dashboard-screen');
