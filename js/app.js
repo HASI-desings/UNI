@@ -63,25 +63,86 @@ function detectDeviceCapabilities() {
     return STATE.deviceCapabilities;
 }
 
-function updateCharacterPreview(key) {
-    const character = window.Parallax && window.Parallax.getCharacter(key);
-    const preview = document.getElementById('login-character-preview');
-    const img = document.getElementById('login-character-img');
-    const label = document.getElementById('login-character-label');
-    if (!preview || !character) return;
+const LOGIN_REVEAL_MS = 650; // matches the character's move-in transition
 
-    img.src = character.image;
-    img.alt = character.name;
-    label.textContent = character.name;
-    preview.style.borderColor = character.color;
+function resetLoginVisuals() {
+    const charImg = document.getElementById('login-hero-char-img');
+    const nameBadge = document.getElementById('login-name-badge');
+    const pinGroup = document.getElementById('pin-group');
+    const submitBtn = document.getElementById('login-submit-btn');
+    const pinInput = document.getElementById('pin-input');
 
-    if (window.Parallax) window.Parallax.applyTheme(key);
+    if (charImg) charImg.classList.remove('is-visible');
+    if (nameBadge) { nameBadge.classList.remove('is-visible'); nameBadge.textContent = ''; }
+    if (pinGroup) pinGroup.classList.remove('is-visible');
+    if (submitBtn) submitBtn.classList.remove('is-visible');
+    if (pinInput) pinInput.value = '';
+
+    document.documentElement.style.setProperty('--color-background', '#040404');
+    document.documentElement.style.setProperty('--color-primary', '#3B82F6');
+}
+
+function revealLoginCharacter(userKey) {
+    const character = window.Parallax && window.Parallax.getCharacter(userKey);
+    const charImg = document.getElementById('login-hero-char-img');
+    const nameBadge = document.getElementById('login-name-badge');
+    const pinGroup = document.getElementById('pin-group');
+    const submitBtn = document.getElementById('login-submit-btn');
+    if (!character || !charImg) return;
+
+    // Reset anything left over from a previous selection
+    if (submitBtn) submitBtn.classList.remove('is-visible');
+    if (pinGroup) pinGroup.classList.remove('is-visible');
+    if (nameBadge) nameBadge.classList.remove('is-visible');
+
+    // Background shifts to the selected user immediately
+    window.Parallax.applyTheme(userKey);
+
+    // Fade the current character out, swap the art, fade the new one in —
+    // this way switching between two already-selected users still crossfades
+    const wasVisible = charImg.classList.contains('is-visible');
+    charImg.classList.remove('is-visible');
+
+    const swapAndFadeIn = () => {
+        charImg.src = character.image;
+        charImg.alt = character.name;
+        void charImg.offsetWidth; // restart the transition
+        charImg.classList.add('is-visible');
+    };
+
+    if (wasVisible) {
+        window.setTimeout(swapAndFadeIn, 250);
+    } else {
+        swapAndFadeIn();
+    }
+
+    // Once the character settles, reveal their name top-right, then the PIN field
+    window.setTimeout(() => {
+        if (nameBadge) {
+            nameBadge.textContent = character.name;
+            nameBadge.classList.add('is-visible');
+        }
+        if (pinGroup) {
+            pinGroup.classList.add('is-visible');
+            const pinInput = document.getElementById('pin-input');
+            if (pinInput) pinInput.focus();
+        }
+    }, LOGIN_REVEAL_MS);
 }
 
 function handleUserSelectChange(userKey) {
-    if (!userKey) return;
-    updateCharacterPreview(userKey);
-    if (window.Parallax) window.Parallax.setActiveByKey(userKey, { animate: false });
+    if (!userKey) {
+        resetLoginVisuals();
+        return;
+    }
+    revealLoginCharacter(userKey);
+}
+
+function handlePinInput(value) {
+    const submitBtn = document.getElementById('login-submit-btn');
+    if (!submitBtn) return;
+    const isComplete = value.length === 4 && /^\d{4}$/.test(value);
+    submitBtn.classList.toggle('is-visible', isComplete);
 }
 
 function continueAsActiveCharacter() {
@@ -89,9 +150,11 @@ function continueAsActiveCharacter() {
     if (active) {
         const select = document.getElementById('user-select');
         if (select) select.value = active.key;
-        updateCharacterPreview(active.key);
+        showScreen('login-screen');
+        revealLoginCharacter(active.key);
+    } else {
+        showScreen('login-screen');
     }
-    showScreen('login-screen');
 }
 
 // ============================================
@@ -115,6 +178,12 @@ function showScreen(screenId) {
     if (bottomNav) {
         const isPreAuthScreen = screenId === 'landing-screen' || screenId === 'login-screen';
         bottomNav.classList.toggle('is-hidden', isPreAuthScreen);
+    }
+
+    // Starting a fresh login attempt (not arriving with a character already chosen)
+    if (screenId === 'login-screen') {
+        const select = document.getElementById('user-select');
+        if (select && !select.value) resetLoginVisuals();
     }
 
     // Close menu if open
@@ -176,8 +245,10 @@ function handleLogin(event) {
     // Show dashboard
     showScreen('dashboard-screen');
 
-    // Clear form
+    // Clear form + reset the login screen's staged reveal for next time
     pinInput.value = '';
+    resetLoginVisuals();
+    userSelect.value = '';
 }
 
 function handleLogout() {
@@ -418,11 +489,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Detect device capabilities
     detectDeviceCapabilities();
 
-    // Seed the login preview with whichever character the hero starts on
-    if (window.Parallax) {
-        const active = window.Parallax.getActiveCharacter();
-        if (active) updateCharacterPreview(active.key);
-    }
+    // Login screen starts with no character revealed until a name is chosen
+    resetLoginVisuals();
 
     // Check if user is already logged in
     if (STATE.deviceCapabilities.hasLocalStorage) {
