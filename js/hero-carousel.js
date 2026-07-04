@@ -7,14 +7,16 @@
 // ============================================
 
 (function () {
-    // NOTE: only 4 distinct figurine assets exist, so Haroon
-    // reuses image #1's asset — his color is what sets him apart.
+    // Each character is paired with the asset whose outfit color matches
+    // their theme color. Hussnain keeps the blue-hoodie asset (paired with
+    // purple) since only 4 distinct assets exist for 5 people — Haroon
+    // shares that same asset, now recolored to match its blue outfit.
     const CHARACTERS = [
         { key: 'hussnain', name: 'Hussnain', color: '#8B5CF6', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/1.02464a56.png' },
-        { key: 'faizan', name: 'Faizan', color: '#3B82F6', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/2.b977faab.png' },
+        { key: 'haroon', name: 'Haroon', color: '#3B82F6', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/1.02464a56.png' },
+        { key: 'mahdiya', name: 'Mahdiya', color: '#22C55E', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/2.b977faab.png' },
         { key: 'alima', name: 'Alima', color: '#EC4899', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/3.4df853b4.png' },
-        { key: 'mahdiya', name: 'Mahdiya', color: '#F5C518', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/4.4457fbce.png' },
-        { key: 'haroon', name: 'Haroon', color: '#22C55E', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/1.02464a56.png' },
+        { key: 'faizan', name: 'Faizan', color: '#F4845F', image: 'https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/4.4457fbce.png' },
     ];
 
     const COUNT = CHARACTERS.length;
@@ -55,10 +57,23 @@
         return { center: index, left, right, back };
     }
 
+    // Blends a hex color toward near-black in plain JS — avoids CSS
+    // color-mix(), which isn't supported on all mobile browsers and was
+    // silently breaking the background color on some phones.
+    function blendTowardDark(hex, amount) {
+        const clean = hex.replace('#', '');
+        const r = parseInt(clean.substring(0, 2), 16);
+        const g = parseInt(clean.substring(2, 4), 16);
+        const b = parseInt(clean.substring(4, 6), 16);
+        const base = 4; // #040404
+        const mix = (channel) => Math.round(channel * amount + base * (1 - amount));
+        return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+    }
+
     function applyTheme(character) {
         const root = document.documentElement.style;
         root.setProperty('--user-color', character.color);
-        root.setProperty('--color-background', `color-mix(in srgb, ${character.color} 14%, #040404)`);
+        root.setProperty('--color-background', blendTowardDark(character.color, 0.14));
         root.setProperty('--color-primary', character.color);
     }
 
