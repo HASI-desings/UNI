@@ -5,23 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#040404">
   <meta name="description" content="Parallax - Academic GPA Tracker">
-  
-  <!-- PWA Manifest -->
   <link rel="manifest" href="./manifest.json">
-  
-  <!-- iOS PWA Meta Tags -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Parallax">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
   
-  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   
-  <!-- Stylesheets -->
   <link rel="stylesheet" href="./css/tokens.css">
   <link rel="stylesheet" href="./css/base.css">
   <link rel="stylesheet" href="./css/components.css">
@@ -29,382 +23,186 @@
   <link rel="stylesheet" href="./css/responsive.css">
   
   <title>Parallax</title>
+  <style>
+    body { margin: 0; padding: 0; background: #040404; color: #fff; font-family: 'Inter', sans-serif; }
+    .hidden { display: none !important; }
+    .screen { width: 100%; height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .login-screen { background: #040404; }
+    .app-screen { background: #0a0a0a; }
+  </style>
 </head>
 <body>
-  <!-- Root container for all screens -->
-  <div id="app-root">
-    <!-- Loading state -->
-    <div id="loading-screen" class="screen screen-loading">
-      <div class="loading-spinner">
-        <div class="spinner-ring"></div>
-        <p>Loading Parallax...</p>
-      </div>
-    </div>
-
-    <!-- Login Screen -->
-    <section id="screen-login" class="screen screen-login hidden">
-      <div class="login-container">
-        <div class="login-card">
-          <div class="login-header">
-            <h1 class="logo-text">PARALLAX</h1>
-            <p class="logo-subtitle">GATED ACCESS</p>
-          </div>
-
-          <form id="login-form" class="login-form">
-            <!-- User Selection Dropdown -->
-            <div class="form-group">
-              <label for="user-select" class="form-label">
-                <span class="material-symbols-outlined">account_circle</span>
-                <span>Select Identity</span>
-              </label>
-              <select id="user-select" class="form-select" required>
-                <option value="">Choose a user...</option>
-                <option value="hussnain">Hussnain</option>
-                <option value="faizan">Faizan</option>
-                <option value="alima">Alima</option>
-                <option value="haroon">Haroon</option>
-                <option value="mahdiya">Mahdiya</option>
-              </select>
-            </div>
-
-            <!-- PIN Entry -->
-            <div class="form-group">
-              <label for="pin-input" class="form-label">
-                <span>ENTER PASSCODE</span>
-              </label>
-              <div class="pin-input-container">
-                <input type="password" id="pin-input" class="pin-input" maxlength="4" inputmode="numeric" placeholder="••••" required>
-                <div class="pin-dots">
-                  <span class="pin-dot"></span>
-                  <span class="pin-dot"></span>
-                  <span class="pin-dot"></span>
-                  <span class="pin-dot"></span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Submit Button -->
-            <button type="submit" class="btn btn-primary btn-large">
-              <span>Enter Portal</span>
-              <span class="material-symbols-outlined">arrow_forward</span>
-            </button>
-
-            <!-- Error Message -->
-            <div id="login-error" class="error-message hidden"></div>
-          </form>
-
-          <div class="login-footer">
-            <p class="encrypted-badge">
-              <span class="material-symbols-outlined">lock</span>
-              <span>Encrypted Connection</span>
-            </p>
-          </div>
+  <!-- Login Screen -->
+  <div id="login-screen" class="screen login-screen">
+    <div style="text-align: center; max-width: 400px; padding: 20px;">
+      <h1 style="font-size: 48px; margin: 0 0 10px 0; color: #00C896;">PARALLAX</h1>
+      <p style="color: rgba(255,255,255,0.6); margin: 0 0 40px 0;">Academic GPA Tracker</p>
+      
+      <form id="login-form" style="display: flex; flex-direction: column; gap: 20px;">
+        <div>
+          <label style="display: block; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.7);">SELECT USER</label>
+          <select id="user-select" style="width: 100%; padding: 12px; background: #1a1a1a; color: #fff; border: 1px solid #333; border-radius: 8px; font-size: 14px;">
+            <option value="">Choose a user...</option>
+            <option value="hussnain">Hussnain</option>
+            <option value="faizan">Faizan</option>
+            <option value="alima">Alima</option>
+            <option value="haroon">Haroon</option>
+            <option value="mahdiya">Mahdiya</option>
+          </select>
         </div>
-      </div>
-
-      <!-- Parallax background -->
-      <div class="parallax-bg">
-        <canvas id="shader-canvas"></canvas>
-      </div>
-    </section>
-
-    <!-- Lock Overlay (shown when app resumes from background) -->
-    <div id="lock-overlay" class="lock-overlay hidden">
-      <div class="lock-overlay-content">
-        <div class="lock-icon">
-          <span class="material-symbols-outlined">lock</span>
-        </div>
-        <h2>Session Locked</h2>
-        <p>Enter your PIN to continue</p>
         
-        <form id="relock-form" class="relock-form">
-          <input type="password" id="relock-pin" class="pin-input" maxlength="4" inputmode="numeric" placeholder="••••" required>
-          <button type="submit" class="btn btn-primary">Unlock</button>
-        </form>
+        <div>
+          <label style="display: block; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.7);">ENTER PIN</label>
+          <input type="password" id="pin-input" maxlength="4" inputmode="numeric" placeholder="••••" style="width: 100%; padding: 12px; background: #1a1a1a; color: #fff; border: 1px solid #333; border-radius: 8px; font-size: 18px; text-align: center; letter-spacing: 8px;">
+        </div>
         
-        <div id="relock-error" class="error-message hidden"></div>
-      </div>
-    </div>
-
-    <!-- Main App Container -->
-    <div id="app-container" class="app-container hidden">
-      <!-- Parallax Background Layer 1: Shader -->
-      <div class="parallax-layer-1">
-        <canvas id="shader-canvas-main"></canvas>
-      </div>
-
-      <!-- Parallax Background Layer 2: Floating Shapes -->
-      <div class="parallax-layer-2"></div>
-
-      <!-- Top Navigation (Mobile) -->
-      <header id="top-nav" class="top-nav">
-        <div class="top-nav-content">
-          <h1 class="app-title">Parallax</h1>
-          <div class="top-nav-actions">
-            <button id="menu-toggle" class="btn-icon" aria-label="Menu">
-              <span class="material-symbols-outlined">menu</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <!-- Sidebar Navigation (Desktop) -->
-      <nav id="sidebar" class="sidebar">
-        <div class="sidebar-header">
-          <div class="sidebar-logo">
-            <div class="logo-avatar"></div>
-            <div class="logo-text-group">
-              <h2>Parallax</h2>
-              <p>High-Achiever Mode</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="sidebar-nav">
-          <a href="#" data-screen="dashboard" class="nav-item active">
-            <span class="material-symbols-outlined">dashboard</span>
-            <span>Dashboard</span>
-          </a>
-          <a href="#" data-screen="courses" class="nav-item">
-            <span class="material-symbols-outlined">school</span>
-            <span>Courses</span>
-          </a>
-          <a href="#" data-screen="what-if" class="nav-item">
-            <span class="material-symbols-outlined">calculate</span>
-            <span>Simulations</span>
-          </a>
-          <a href="#" data-screen="history" class="nav-item">
-            <span class="material-symbols-outlined">trending_up</span>
-            <span>History</span>
-          </a>
-          <a href="#" data-screen="notes" class="nav-item">
-            <span class="material-symbols-outlined">notes</span>
-            <span>Notes</span>
-          </a>
-          <a href="#" data-screen="activity" class="nav-item">
-            <span class="material-symbols-outlined">history</span>
-            <span>Activity</span>
-          </a>
-        </div>
-
-        <div class="sidebar-footer">
-          <button id="settings-btn" class="nav-item">
-            <span class="material-symbols-outlined">settings</span>
-            <span>Settings</span>
-          </button>
-          <button id="logout-btn" class="nav-item danger">
-            <span class="material-symbols-outlined">logout</span>
-            <span>Logout</span>
-          </button>
-        </div>
-      </nav>
-
-      <!-- Mobile Sidebar (Drawer) -->
-      <div id="mobile-drawer" class="mobile-drawer hidden">
-        <div class="drawer-overlay" id="drawer-overlay"></div>
-        <div class="drawer-content">
-          <nav class="sidebar-nav">
-            <a href="#" data-screen="dashboard" class="nav-item active">
-              <span class="material-symbols-outlined">dashboard</span>
-              <span>Dashboard</span>
-            </a>
-            <a href="#" data-screen="courses" class="nav-item">
-              <span class="material-symbols-outlined">school</span>
-              <span>Courses</span>
-            </a>
-            <a href="#" data-screen="what-if" class="nav-item">
-              <span class="material-symbols-outlined">calculate</span>
-              <span>Simulations</span>
-            </a>
-            <a href="#" data-screen="history" class="nav-item">
-              <span class="material-symbols-outlined">trending_up</span>
-              <span>History</span>
-            </a>
-            <a href="#" data-screen="notes" class="nav-item">
-              <span class="material-symbols-outlined">notes</span>
-              <span>Notes</span>
-            </a>
-            <a href="#" data-screen="activity" class="nav-item">
-              <span class="material-symbols-outlined">history</span>
-              <span>Activity</span>
-            </a>
-            <hr style="margin: var(--spacing-lg) 0; border: none; border-top: 1px solid var(--color-outline-variant);">
-            <button id="settings-btn-mobile" class="nav-item">
-              <span class="material-symbols-outlined">settings</span>
-              <span>Settings</span>
-            </button>
-            <button id="logout-btn-mobile" class="nav-item danger">
-              <span class="material-symbols-outlined">logout</span>
-              <span>Logout</span>
-            </button>
-          </nav>
-        </div>
-      </div>
-
-      <!-- Main Content Area -->
-      <main id="main-content" class="main-content">
-        <!-- Dashboard Screen -->
-        <section id="dashboard-screen" class="content-screen active">
-          <div class="screen-header">
-            <h2>Dashboard</h2>
-          </div>
-
-          <div class="dashboard-content">
-            <!-- 3D CGPA Orb -->
-            <div class="cgpa-orb-container">
-              <canvas id="cgpa-orb-canvas"></canvas>
-              <div class="cgpa-display">
-                <div class="cgpa-value">3.42</div>
-                <div class="cgpa-label">LIVE CGPA</div>
-              </div>
-            </div>
-
-            <!-- Stats Cards -->
-            <div class="stats-grid">
-              <div class="stat-card">
-                <div class="stat-icon">
-                  <span class="material-symbols-outlined">calendar_today</span>
-                </div>
-                <div class="stat-content">
-                  <div class="stat-label">CURRENT TERM</div>
-                  <div class="stat-value">3.80</div>
-                  <div class="stat-change positive">+0.12</div>
-                </div>
-              </div>
-
-              <div class="stat-card">
-                <div class="stat-icon">
-                  <span class="material-symbols-outlined">grade</span>
-                </div>
-                <div class="stat-content">
-                  <div class="stat-label">CREDITS EARNED</div>
-                  <div class="stat-value">86</div>
-                  <div class="stat-subtext">/ 120</div>
-                </div>
-              </div>
-
-              <div class="stat-card">
-                <div class="stat-icon">
-                  <span class="material-symbols-outlined">people</span>
-                </div>
-                <div class="stat-content">
-                  <div class="stat-label">ONLINE NOW</div>
-                  <div class="stat-value" id="presence-count">3</div>
-                  <div class="stat-subtext">of 5 users</div>
-                </div>
-              </div>
-
-              <div class="stat-card">
-                <div class="stat-icon">
-                  <span class="material-symbols-outlined">sync</span>
-                </div>
-                <div class="stat-content">
-                  <div class="stat-label">SYNC STATUS</div>
-                  <div class="stat-value" id="sync-status">Online</div>
-                  <div class="stat-subtext">Real-time</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Recent Activity -->
-            <div class="activity-section">
-              <div class="activity-header">
-                <h3>Recent Activity</h3>
-              </div>
-              <div id="activity-feed" class="activity-feed">
-                <!-- Activity items populated by JS -->
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Courses Screen -->
-        <section id="courses-screen" class="content-screen">
-          <div class="screen-header">
-            <h2>Courses</h2>
-            <button class="btn btn-primary btn-sm" data-action="add-course">
-              <span class="material-symbols-outlined">add</span>
-              <span>Add Course</span>
-            </button>
-          </div>
-
-          <div class="courses-content">
-            <div id="courses-list" class="courses-grid">
-              <!-- Course cards populated by JS -->
-            </div>
-          </div>
-        </section>
-
-        <!-- What-If Simulator Screen -->
-        <section id="what-if-screen" class="content-screen">
-          <div class="screen-header">
-            <h2>What-If Simulator</h2>
-          </div>
-
-          <div class="what-if-content">
-            <!-- Simulator controls populated by JS -->
-          </div>
-        </section>
-
-        <!-- History Screen -->
-        <section id="history-screen" class="content-screen">
-          <div class="screen-header">
-            <h2>GPA History</h2>
-          </div>
-
-          <div class="history-content">
-            <!-- Charts and trends populated by JS -->
-          </div>
-        </section>
-
-        <!-- Notes Screen -->
-        <section id="notes-screen" class="content-screen">
-          <div class="screen-header">
-            <h2>Personal Notes</h2>
-            <button class="btn btn-primary btn-sm" data-action="add-note">
-              <span class="material-symbols-outlined">add</span>
-              <span>New Note</span>
-            </button>
-          </div>
-
-          <div class="notes-content">
-            <div id="notes-list" class="notes-grid">
-              <!-- Notes populated by JS -->
-            </div>
-          </div>
-        </section>
-
-        <!-- Activity Screen -->
-        <section id="activity-screen" class="content-screen">
-          <div class="screen-header">
-            <h2>Activity Log</h2>
-          </div>
-
-          <div class="activity-content">
-            <div id="activity-log-full" class="activity-feed">
-              <!-- Full activity log populated by JS -->
-            </div>
-          </div>
-        </section>
-
-        <!-- Settings Screen -->
-        <section id="settings-screen" class="content-screen">
-          <div class="screen-header">
-            <h2>Settings</h2>
-          </div>
-
-          <div class="settings-content">
-            <!-- Settings controls populated by JS -->
-          </div>
-        </section>
-      </main>
-
-      <!-- Toast Container -->
-      <div id="toast-container" class="toast-container"></div>
+        <button type="submit" style="padding: 12px; background: #00C896; color: #000; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px;">ENTER PORTAL</button>
+        
+        <div id="login-error" style="color: #FF6B6B; font-size: 12px; display: none;"></div>
+      </form>
     </div>
   </div>
 
-  <!-- Service Worker Registration -->
+  <!-- App Screen -->
+  <div id="app-screen" class="screen app-screen hidden">
+    <div style="width: 100%; height: 100%; display: flex; flex-direction: column;">
+      <!-- Header -->
+      <div style="padding: 20px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin: 0; font-size: 24px;">Parallax</h2>
+        <button id="logout-btn" style="padding: 8px 16px; background: #FF6B6B; color: #fff; border: none; border-radius: 6px; cursor: pointer;">Logout</button>
+      </div>
+
+      <!-- Content -->
+      <div style="flex: 1; overflow-y: auto; padding: 20px;">
+        <!-- Dashboard -->
+        <div id="dashboard" style="display: grid; gap: 20px;">
+          <div style="background: #1a1a1a; padding: 20px; border-radius: 12px; text-align: center;">
+            <div style="font-size: 48px; color: #00C896; font-weight: bold;" id="cgpa-display">3.42</div>
+            <div style="color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 8px;">LIVE CGPA</div>
+          </div>
+
+          <div style="background: #1a1a1a; padding: 20px; border-radius: 12px;">
+            <h3 style="margin: 0 0 16px 0; font-size: 14px; color: rgba(255,255,255,0.7);">COURSES</h3>
+            <div id="courses-list" style="display: grid; gap: 12px;"></div>
+          </div>
+
+          <div style="background: #1a1a1a; padding: 20px; border-radius: 12px;">
+            <h3 style="margin: 0 0 16px 0; font-size: 14px; color: rgba(255,255,255,0.7);">RECENT ACTIVITY</h3>
+            <div id="activity-list" style="display: grid; gap: 12px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // App State
+    const state = {
+      user: null,
+      courses: [
+        { id: 1, name: 'Physics 101', grade: 'A', credits: 4 },
+        { id: 2, name: 'Chemistry Lab', grade: 'B+', credits: 3 },
+        { id: 3, name: 'Calculus II', grade: 'B', credits: 4 },
+      ],
+      activity: [
+        { text: 'You updated Physics 101 grade to A', time: 'Just now' },
+        { text: 'Hussnain updated Chemistry Lab', time: '2h ago' },
+        { text: 'You added Calculus II course', time: '1d ago' },
+      ]
+    };
+
+    // Initialize
+    function init() {
+      const savedSession = localStorage.getItem('parallax-session');
+      if (savedSession) {
+        try {
+          state.user = JSON.parse(savedSession);
+          showAppScreen();
+        } catch (e) {
+          localStorage.removeItem('parallax-session');
+          showLoginScreen();
+        }
+      } else {
+        showLoginScreen();
+      }
+
+      setupEventListeners();
+    }
+
+    function showLoginScreen() {
+      document.getElementById('login-screen').classList.remove('hidden');
+      document.getElementById('app-screen').classList.add('hidden');
+    }
+
+    function showAppScreen() {
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app-screen').classList.remove('hidden');
+      renderDashboard();
+    }
+
+    function setupEventListeners() {
+      document.getElementById('login-form').addEventListener('submit', handleLogin);
+      document.getElementById('logout-btn').addEventListener('click', handleLogout);
+    }
+
+    function handleLogin(e) {
+      e.preventDefault();
+      const user = document.getElementById('user-select').value;
+      const pin = document.getElementById('pin-input').value;
+      const errorDiv = document.getElementById('login-error');
+
+      if (!user || !pin) {
+        errorDiv.textContent = 'Please select a user and enter PIN';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      if (!/^\d{4}$/.test(pin)) {
+        errorDiv.textContent = 'PIN must be 4 digits';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      state.user = { name: user };
+      localStorage.setItem('parallax-session', JSON.stringify(state.user));
+      showAppScreen();
+    }
+
+    function handleLogout() {
+      if (confirm('Logout?')) {
+        localStorage.removeItem('parallax-session');
+        state.user = null;
+        document.getElementById('login-form').reset();
+        showLoginScreen();
+      }
+    }
+
+    function renderDashboard() {
+      const coursesList = document.getElementById('courses-list');
+      coursesList.innerHTML = state.courses.map(c => `
+        <div style="background: #0a0a0a; padding: 12px; border-radius: 8px; border-left: 3px solid #00C896;">
+          <div style="font-weight: bold;">${c.name}</div>
+          <div style="font-size: 12px; color: rgba(255,255,255,0.6);">${c.credits} credits • Grade: ${c.grade}</div>
+        </div>
+      `).join('');
+
+      const activityList = document.getElementById('activity-list');
+      activityList.innerHTML = state.activity.map(a => `
+        <div style="border-bottom: 1px solid #222; padding-bottom: 12px;">
+          <div style="font-size: 13px;">${a.text}</div>
+          <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 4px;">${a.time}</div>
+        </div>
+      `).join('');
+    }
+
+    // Start app
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./service-worker.js').catch(err => {
@@ -412,8 +210,5 @@
       });
     }
   </script>
-
-  <!-- Main App Script -->
-  <script src="./js/app.js"></script>
 </body>
 </html>
