@@ -50,12 +50,14 @@
 
     <!-- Login Screen -->
     <section id="login-screen" class="screen">
-        <div class="login-container">
-            <div class="login-card">
-                <div class="login-character-preview" id="login-character-preview">
-                    <img id="login-character-img" src="" alt="">
-                    <span id="login-character-label">Hussnain</span>
-                </div>
+        <div class="login-container" id="login-hero">
+            <div class="login-hero__grain"></div>
+            <div class="login-hero__character">
+                <img id="login-hero-char-img" src="" alt="">
+            </div>
+            <div class="login-name-badge" id="login-name-badge"></div>
+
+            <div class="login-card login-card--glass">
                 <h2>Welcome Back</h2>
                 <form id="login-form" onsubmit="handleLogin(event)">
                     <div class="form-group">
@@ -69,15 +71,16 @@
                             <option value="mahdiya">Mahdiya</option>
                         </select>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group pin-group" id="pin-group">
                         <label for="pin-input">Enter PIN</label>
-                        <input type="password" id="pin-input" maxlength="4" placeholder="••••" required>
+                        <input type="password" id="pin-input" maxlength="4" placeholder="••••" oninput="handlePinInput(this.value)">
                         <small>First time? Set your PIN (4 digits)</small>
                     </div>
-                    <button type="submit" class="btn btn-primary full-width">Login</button>
+                    <button type="submit" class="btn btn-primary full-width" id="login-submit-btn">Login</button>
                 </form>
                 <button class="btn btn-ghost full-width" onclick="showScreen('landing-screen')">Back</button>
             </div>
+
         </div>
     </section>
 
