@@ -144,6 +144,7 @@
         <div class="grades-container">
             <div class="screen-header">
                 <h2>Grades</h2>
+                <button class="btn btn-primary" onclick="showAddGrade()">+ Add</button>
             </div>
             <div id="grades-list" class="grades-list">
                 <p class="empty-state">No grades yet. Add courses first!</p>
@@ -226,6 +227,16 @@
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('service-worker.js').catch(e => console.log('SW registration failed:', e));
+
+            // When a new service worker takes control (i.e. a new deploy
+            // has been fetched), reload once so the page picks up the
+            // latest HTML/CSS/JS instead of sitting on a stale version.
+            let hasReloaded = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (hasReloaded) return;
+                hasReloaded = true;
+                window.location.reload();
+            });
         }
     </script>
 </body>
