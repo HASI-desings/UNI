@@ -281,6 +281,8 @@ function loadUserData() {
     }
 
     updateDashboard();
+    renderCourses();
+    renderGrades();
 }
 
 function updateDashboard() {
@@ -444,6 +446,114 @@ function deleteCourse(courseId) {
 
         updateDashboard();
         renderCourses();
+    }
+}
+
+// ============================================
+// GRADE MANAGEMENT
+// ============================================
+
+const GRADE_POINTS = {
+    'A+': 4.0, 'A': 4.0, 'A-': 3.7,
+    'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+    'C+': 2.3, 'C': 2.0, 'C-': 1.7,
+    'D+': 1.3, 'D': 1.0, 'F': 0.0
+};
+
+function showAddGrade() {
+    if (STATE.courses.length === 0) {
+        alert('Add a course first, then come back to record a grade.');
+        return;
+    }
+
+    const courseOptions = STATE.courses.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
+    const choice = prompt(`Which course is this grade for?\n\n${courseOptions}\n\nEnter the number:`);
+    if (!choice) return;
+
+    const course = STATE.courses[parseInt(choice, 10) - 1];
+    if (!course) {
+        alert("That number doesn't match a course.");
+        return;
+    }
+
+    const letterRaw = prompt('Enter the letter grade (A+, A, A-, B+, B, B-, C+, C, C-, D+, D, F):');
+    if (!letterRaw) return;
+
+    const letter = letterRaw.trim().toUpperCase();
+    if (!(letter in GRADE_POINTS)) {
+        alert('Please enter a valid letter grade, e.g. A, B+, C-.');
+        return;
+    }
+
+    const grade = {
+        id: Date.now().toString(),
+        courseId: course.id,
+        letter,
+        gradePoints: GRADE_POINTS[letter],
+        createdAt: new Date().toISOString()
+    };
+
+    STATE.grades.push(grade);
+
+    if (STATE.deviceCapabilities.hasLocalStorage) {
+        localStorage.setItem(
+            CONFIG.STORAGE_KEY_PREFIX + 'grades_' + STATE.currentUser,
+            JSON.stringify(STATE.grades)
+        );
+    }
+
+    STATE.activityLog.push({
+        action: `Recorded ${letter} in ${course.name}`,
+        timestamp: new Date().toISOString()
+    });
+
+    updateDashboard();
+    renderGrades();
+}
+
+function renderGrades() {
+    const gradesList = document.getElementById('grades-list');
+    if (!gradesList) return;
+
+    if (STATE.grades.length === 0) {
+        gradesList.innerHTML = '<p class="empty-state">No grades yet. Add courses first!</p>';
+        return;
+    }
+
+    gradesList.innerHTML = STATE.grades
+        .slice()
+        .reverse()
+        .map(grade => {
+            const course = STATE.courses.find(c => c.id === grade.courseId);
+            return `
+                <div class="course-card">
+                    <div class="course-title">${course ? course.name : 'Unknown course'}</div>
+                    <div class="course-info">
+                        <p>Grade: ${grade.letter} (${grade.gradePoints.toFixed(1)} pts)</p>
+                        <p>Recorded: ${new Date(grade.createdAt).toLocaleDateString()}</p>
+                    </div>
+                    <button class="btn btn-secondary" onclick="deleteGrade('${grade.id}')">Delete</button>
+                </div>
+            `;
+        })
+        .join('');
+}
+
+function deleteGrade(gradeId) {
+    if (confirm('Delete this grade?')) {
+        STATE.grades = STATE.grades.filter(g => g.id !== gradeId);
+
+        if (STATE.deviceCapabilities.hasLocalStorage) {
+            localStorage.setItem(
+                CONFIG.STORAGE_KEY_PREFIX + 'grades_' + STATE.currentUser,
+                JSON.stringify(STATE.grades)
+            );
+        }
+
+        STATE.activityLog.push({ action: 'Deleted a grade', timestamp: new Date().toISOString() });
+
+        updateDashboard();
+        renderGrades();
     }
 }
 
