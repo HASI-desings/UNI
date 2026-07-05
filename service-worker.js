@@ -2,8 +2,8 @@
    SERVICE WORKER - OFFLINE SUPPORT & CACHING
    ============================================ */
 
-const CACHE_NAME = 'parallax-v3';
-const CORE_FILES = ['/', '/index.html', '/css/styles.css', '/js/app.js', '/js/hero-carousel.js', '/js/supabase-client.js', '/js/grading-engine.js', '/manifest.json', '/offline.html'];
+const CACHE_NAME = 'parallax-v4';
+const CORE_FILES = ['/', '/index.html', '/css/styles.css', '/js/app.js', '/js/hero-carousel.js', '/js/supabase-client.js', '/js/math-engine.js', '/js/notifications.js', '/manifest.json', '/offline.html'];
 
 // ============================================
 // INSTALL EVENT
