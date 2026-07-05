@@ -17,16 +17,24 @@
     // Returns { ok: true } | { ok: false, reason: 'no-such-user'|'wrong-pin' }
     async function login(username, pin) {
         const pinHash = await hashPin(pin);
+
+        // Try to claim the PIN in one shot: only succeeds if this user has
+        // never set one before. No separate "does this user exist" check
+        // first — that's what was making first logins feel slow.
+        const { data: claimed, error: claimError } = await client
+            .from('users')
+            .update({ pin_hash: pinHash })
+            .eq('username', username)
+            .is('pin_hash', null)
+            .select('username')
+            .maybeSingle();
+
+        if (claimed) return { ok: true, firstTime: true };
+        if (claimError) return { ok: false, reason: claimError.message };
+
+        // Already had a PIN (or the username doesn't exist) — verify normally.
         const { data: user, error } = await client.from('users').select('username, pin_hash').eq('username', username).single();
         if (error || !user) return { ok: false, reason: 'no-such-user' };
-
-        if (!user.pin_hash) {
-            // First login for this user — set their PIN now
-            const { error: updateError } = await client.from('users').update({ pin_hash: pinHash }).eq('username', username);
-            if (updateError) return { ok: false, reason: updateError.message };
-            return { ok: true, firstTime: true };
-        }
-
         if (user.pin_hash !== pinHash) return { ok: false, reason: 'wrong-pin' };
         return { ok: true, firstTime: false };
     }
