@@ -124,6 +124,11 @@
                     <div class="metric-value" id="courses-count">0</div>
                     <div class="metric-trend">This Semester</div>
                 </div>
+                <div class="metric-card">
+                    <div class="metric-label">Degree Progress</div>
+                    <div class="metric-value" id="degree-progress-value">-</div>
+                    <div class="metric-trend" id="degree-progress-label">Set up in onboarding</div>
+                </div>
             </div>
 
             <!-- Recent Activity -->
@@ -175,12 +180,28 @@
 
             <div class="course-detail-section">
                 <div class="screen-header">
+                    <h3>Weightage Matrix</h3>
+                    <button class="btn btn-secondary" onclick="showWeightageModal()">Edit</button>
+                </div>
+                <div id="course-weightage-display" class="weightage-display"></div>
+            </div>
+
+            <div class="course-detail-section">
+                <div class="screen-header">
                     <h3>Assessments</h3>
                     <button class="btn btn-primary" onclick="showAddAssessmentModal()">+ Add</button>
                 </div>
                 <div id="course-assessments-list" class="assessments-list">
                     <p class="empty-state">No assessments yet. Add a quiz, assignment, or exam.</p>
                 </div>
+            </div>
+
+            <div class="course-detail-section">
+                <div class="screen-header">
+                    <h3>Attendance</h3>
+                    <button class="btn btn-secondary" onclick="showMarkAttendanceModal()">Mark Today</button>
+                </div>
+                <div id="course-attendance-summary" class="course-info"></div>
             </div>
 
             <div class="course-detail-section">
@@ -201,7 +222,9 @@
             <div class="form-group">
                 <label for="leaderboard-course-select">Compare by</label>
                 <select id="leaderboard-course-select" onchange="renderSelectedLeaderboard()">
-                    <option value="overall">Overall (Current Semester)</option>
+                    <option value="overall">Overall (Current Semester GPA)</option>
+                    <option value="clutch">Clutch Rating (Midterm → Final)</option>
+                    <option value="attendance">Attendance</option>
                 </select>
             </div>
             <div id="leaderboard-content" class="leaderboard-list">
@@ -230,6 +253,20 @@
         </div>
     </section>
 
+    <!-- Activities / Tasks Screen -->
+    <section id="activities-screen" class="screen">
+        <div class="whatif-container">
+            <div class="screen-header">
+                <h2>Tasks</h2>
+                <button class="btn btn-primary" onclick="showAddActivityModal()">+ Add</button>
+            </div>
+            <p class="screen-subtext">Deadlines across all courses. You'll get a heads-up when one is within 24 hours.</p>
+            <div id="activities-list" class="courses-list">
+                <p class="empty-state">No upcoming tasks. Add a deadline to get reminders.</p>
+            </div>
+        </div>
+    </section>
+
     <!-- Bottom Navigation -->
     <nav class="bottom-nav is-hidden">
         <button class="nav-item active" onclick="navigateTo('dashboard-screen', this)">
@@ -246,7 +283,11 @@
         </button>
         <button class="nav-item" onclick="navigateTo('leaderboard-screen', this)">
             <span class="nav-icon">🏆</span>
-            <span class="nav-label">Leaderboard</span>
+            <span class="nav-label">Ranks</span>
+        </button>
+        <button class="nav-item" onclick="navigateTo('activities-screen', this)">
+            <span class="nav-icon">⏰</span>
+            <span class="nav-label">Tasks</span>
         </button>
         <button class="nav-item" onclick="navigateTo('settings-screen', this)">
             <span class="nav-icon">⚙️</span>
@@ -273,7 +314,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/hero-carousel.js"></script>
     <script src="js/supabase-client.js"></script>
-    <script src="js/grading-engine.js"></script>
+    <script src="js/math-engine.js"></script>
+    <script src="js/notifications.js"></script>
     <script src="js/app.js"></script>
     <script>
         if ('serviceWorker' in navigator) {
