@@ -1,20 +1,8 @@
-
 /* ============================================
    PARALLAX PWA - MAIN APPLICATION
    ============================================ */
 
-// ============================================
-// CONFIGURATION
-// ============================================
-
-const CONFIG = {
-    // ⚠️ REPLACE THESE with your real values from:
-    // Supabase Dashboard → Project Settings → API → Project URL / anon public key
-    // The previous key here was truncated/invalid — that's why nothing was saving.
-    USERS: ['hussnain', 'faizan', 'alima', 'haroon', 'mahdiya'],
-    STORAGE_KEY_PREFIX: 'parallax_',
-    CURRENT_SEMESTER: 'Fall 2026' // bump this each new semester; old courses stay archived under their own semester
-};
+// CONFIG now lives in js/config.js, loaded before this file.
 
 // ============================================
 // STATE
