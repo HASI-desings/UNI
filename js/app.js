@@ -26,6 +26,8 @@ const STATE = {
     marksByCourse: {},       // courseId -> full class marks rows
     semesterRecords: [],     // this user's past semesters
     activityLog: [],
+    profile: null,
+    activities: [],
     deviceCapabilities: {}
 };
 
@@ -252,6 +254,7 @@ function showScreen(screenId) {
     if (screenId === 'courses-screen') renderCourses();
     if (screenId === 'marks-screen') renderMarksOverview();
     if (screenId === 'leaderboard-screen') renderLeaderboardScreen();
+    if (screenId === 'activities-screen') renderActivities();
 
     closeMenu();
 }
@@ -309,6 +312,8 @@ async function handleLogin(event) {
 
     await loadUserData();
     showScreen('dashboard-screen');
+    await maybeShowOnboarding();
+    checkForReminders();
 
     pinInput.value = '';
     resetLoginVisuals();
@@ -369,7 +374,7 @@ function currentSemesterStandingsFor(username) {
 
     STATE.courses.forEach(course => {
         const marks = STATE.marksByCourse[course.id] || [];
-        const { standings } = window.GradingEngine.courseStandings(marks);
+        const { standings } = window.MathEngine.courseStandings(marks, course.weightage_config);
         const mine = standings.find(s => s.username === username);
         if (mine) {
             anyGraded = true;
@@ -403,6 +408,13 @@ function updateDashboard() {
     document.getElementById('term-gpa-value').textContent = termGPA !== null ? termGPA.toFixed(2) : '-';
     document.getElementById('prev-gpa-value').textContent = latestSemester ? latestSemester.gpa.toFixed(2) : '-';
     document.getElementById('prev-gpa-label').textContent = latestSemester ? latestSemester.semester : 'GPA';
+
+    if (STATE.profile && STATE.profile.total_degree_credit_hours) {
+        const totalTracked = completedCredits + currentCredits;
+        const pct = (totalTracked / STATE.profile.total_degree_credit_hours) * 100;
+        document.getElementById('degree-progress-value').textContent = `${Math.min(pct, 100).toFixed(0)}%`;
+        document.getElementById('degree-progress-label').textContent = `${totalTracked} / ${STATE.profile.total_degree_credit_hours} hrs`;
+    }
 
     updateActivityLog();
 }
@@ -508,7 +520,7 @@ function renderMarksOverview() {
 
     list.innerHTML = STATE.courses.map(course => {
         const marks = STATE.marksByCourse[course.id] || [];
-        const { standings, classAverage } = window.GradingEngine.courseStandings(marks);
+        const { standings, classAverage } = window.MathEngine.courseStandings(marks, course.weightage_config);
         const mine = standings.find(s => s.username === STATE.currentUser);
 
         return `
@@ -548,9 +560,8 @@ async function openCourseDetail(courseId) {
 function renderCourseDetail(course) {
     const assessments = STATE.assessmentsByCourse[course.id] || [];
     const marks = STATE.marksByCourse[course.id] || [];
-    const { standings, classAverage } = window.GradingEngine.courseStandings(marks);
+    const { standings, classAverage } = window.MathEngine.courseStandings(marks, course.weightage_config);
     const mine = standings.find(s => s.username === STATE.currentUser);
-    const totalWeightageUsed = assessments.reduce((sum, a) => sum + Number(a.weightage), 0);
 
     document.getElementById('course-detail-summary').innerHTML = `
         <div class="metrics-grid metrics-grid--compact">
@@ -570,13 +581,23 @@ function renderCourseDetail(course) {
                 <div class="metric-trend">of ${standings.length || 0}</div>
             </div>
             <div class="metric-card">
-                <div class="metric-label">Weightage Set</div>
-                <div class="metric-value">${totalWeightageUsed}%</div>
-                <div class="metric-trend">of 100%</div>
+                <div class="metric-label">Credit Hours</div>
+                <div class="metric-value">${course.credit_hours}</div>
+                <div class="metric-trend">This Course</div>
             </div>
         </div>
         <p class="screen-subtext">Grades here are relative — your projected letter is based on how you compare to the class, not a fixed cutoff.</p>
     `;
+
+    const weightageConfig = course.weightage_config || window.MathEngine.DEFAULT_WEIGHTAGE;
+    document.getElementById('course-weightage-display').innerHTML = Object.entries(weightageConfig)
+        .map(([cat, pct]) => `
+            <div class="weightage-row">
+                <span class="weightage-row-label">${cat}</span>
+                <div class="weightage-bar"><div class="weightage-bar-fill" style="width:${pct}%"></div></div>
+                <span class="weightage-row-value">${pct}%</span>
+            </div>
+        `).join('');
 
     const assessmentsList = document.getElementById('course-assessments-list');
     if (assessments.length === 0) {
@@ -588,7 +609,7 @@ function renderCourseDetail(course) {
                 <div class="course-card">
                     <div class="course-title">${a.title} <span class="assessment-type">${a.type}</span></div>
                     <div class="course-info">
-                        <p>Total Marks: ${a.total_marks} · Weightage: ${a.weightage}%</p>
+                        <p>Total Marks: ${a.total_marks}${a.class_average != null ? ` · Announced Class Avg: ${a.class_average}` : ''}</p>
                         <p>Your Marks: ${myMark ? `${myMark.obtained_marks} / ${a.total_marks}` : 'Not entered yet'}</p>
                     </div>
                     <div class="course-card-actions">
@@ -600,6 +621,8 @@ function renderCourseDetail(course) {
             `;
         }).join('');
     }
+
+    renderAttendanceSummary(course.id);
 
     const leaderboardList = document.getElementById('course-leaderboard-list');
     if (standings.length === 0) {
@@ -614,11 +637,77 @@ function renderCourseDetail(course) {
     }
 }
 
+async function renderAttendanceSummary(courseId) {
+    const el = document.getElementById('course-attendance-summary');
+    if (!el) return;
+    const mine = await window.ParallaxDB.getAttendance(courseId, STATE.currentUser);
+    const rate = window.MathEngine.attendanceRate(mine);
+    el.innerHTML = rate !== null
+        ? `<p>Your Attendance: ${rate.toFixed(0)}% (${mine.filter(r => r.status === 'present').length}/${mine.length} classes)</p>`
+        : '<p>No attendance marked yet.</p>';
+}
+
+function showWeightageModal() {
+    const course = STATE.courses.find(c => c.id === activeCourseDetailId);
+    const config = course.weightage_config || window.MathEngine.DEFAULT_WEIGHTAGE;
+
+    showFormModal(
+        `Weightage — ${course.name}`,
+        [
+            { id: 'quiz', label: 'Quiz (%)', type: 'number', value: config.quiz },
+            { id: 'assignment', label: 'Assignment (%)', type: 'number', value: config.assignment },
+            { id: 'presentation', label: 'Presentation (%)', type: 'number', value: config.presentation },
+            { id: 'midterm', label: 'Midterm (%)', type: 'number', value: config.midterm },
+            { id: 'final', label: 'Final (%)', type: 'number', value: config.final }
+        ],
+        'Save',
+        async (values) => {
+            const newConfig = {
+                quiz: values.quiz, assignment: values.assignment, presentation: values.presentation,
+                midterm: values.midterm, final: values.final
+            };
+            if (!window.MathEngine.validateWeightageConfig(newConfig)) {
+                showAlertModal('Doesn\'t add up', 'These weightages must total exactly 100%.');
+                return;
+            }
+            const updated = await window.ParallaxDB.updateWeightageConfig(activeCourseDetailId, newConfig);
+            closeAppModal();
+            if (!updated) { showAlertModal('Error', 'Could not save the weightage matrix.'); return; }
+
+            const idx = STATE.courses.findIndex(c => c.id === activeCourseDetailId);
+            STATE.courses[idx] = updated;
+            window.Notifications.showToast('Weightage matrix updated');
+            renderCourseDetail(updated);
+            updateDashboard();
+        }
+    );
+}
+
+function showMarkAttendanceModal() {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    showFormModal(
+        'Mark Attendance — Today',
+        [{ id: 'status', label: 'Status', type: 'select', value: 'present', options: [
+            { value: 'present', label: 'Present' },
+            { value: 'absent', label: 'Absent' },
+            { value: 'leave', label: 'Leave' }
+        ]}],
+        'Save',
+        async (values) => {
+            const result = await window.ParallaxDB.markAttendance(activeCourseDetailId, STATE.currentUser, todayStr, values.status);
+            closeAppModal();
+            if (!result) { showAlertModal('Error', 'Could not save attendance.'); return; }
+            window.Notifications.showToast('Attendance saved');
+            renderAttendanceSummary(activeCourseDetailId);
+        }
+    );
+}
+
 function showAddAssessmentModal() {
     showFormModal(
         'Add Assessment',
         [
-            { id: 'type', label: 'Type', type: 'select', value: 'quiz', options: [
+            { id: 'type', label: 'Category', type: 'select', value: 'quiz', options: [
                 { value: 'quiz', label: 'Quiz' },
                 { value: 'assignment', label: 'Assignment' },
                 { value: 'presentation', label: 'Presentation' },
@@ -627,16 +716,16 @@ function showAddAssessmentModal() {
             ]},
             { id: 'title', label: 'Title', placeholder: 'e.g. Quiz 1' },
             { id: 'totalMarks', label: 'Total Marks', type: 'number', value: 10 },
-            { id: 'weightage', label: 'Weightage (%)', type: 'number', value: 10 }
+            { id: 'classAverage', label: 'Class Average (optional, if announced)', type: 'number', placeholder: 'Leave blank to compute from logged marks' }
         ],
         'Add Assessment',
         async (values) => {
-            if (!values.title || !values.totalMarks || !values.weightage) {
-                showAlertModal('Missing info', 'Please fill in all fields.');
+            if (!values.title || !values.totalMarks) {
+                showAlertModal('Missing info', 'Please fill in the title and total marks.');
                 return;
             }
             const assessment = await window.ParallaxDB.addAssessment(
-                activeCourseDetailId, values.type, values.title, values.totalMarks, values.weightage, STATE.currentUser
+                activeCourseDetailId, values.type, values.title, values.totalMarks, STATE.currentUser, values.classAverage
             );
             closeAppModal();
             if (!assessment) { showAlertModal('Error', 'Could not add this assessment.'); return; }
@@ -685,7 +774,7 @@ function showEnterMarksModal(assessmentId, totalMarks, title) {
 
 function showAssessmentLeaderboard(assessmentId, title, totalMarks) {
     const marks = (STATE.marksByCourse[activeCourseDetailId] || []).filter(m => m.assessment_id === assessmentId);
-    const board = window.GradingEngine.assessmentLeaderboard(marks, totalMarks);
+    const board = window.MathEngine.assessmentLeaderboard(marks, totalMarks);
 
     const rowsHtml = board.length
         ? renderLeaderboardRows(board.map(b => ({ username: b.username, value: `${b.obtained}/${totalMarks}`, sub: `${b.percentage.toFixed(1)}%`, rank: b.rank })))
@@ -708,9 +797,14 @@ function populateLeaderboardCourseOptions() {
     const select = document.getElementById('leaderboard-course-select');
     if (!select) return;
     const current = select.value;
-    select.innerHTML = '<option value="overall">Overall (Current Semester)</option>' +
-        STATE.courses.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    select.value = STATE.courses.some(c => c.id === current) ? current : 'overall';
+    select.innerHTML = `
+        <option value="overall">Overall (Current Semester GPA)</option>
+        <option value="clutch">Clutch Rating (Midterm → Final)</option>
+        <option value="attendance">Attendance</option>
+        ${STATE.courses.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+    `;
+    const validValues = ['overall', 'clutch', 'attendance', ...STATE.courses.map(c => c.id)];
+    select.value = validValues.includes(current) ? current : 'overall';
 }
 
 function renderLeaderboardScreen() {
@@ -735,9 +829,38 @@ function renderSelectedLeaderboard() {
         return;
     }
 
+    if (select.value === 'clutch') {
+        const allMarks = STATE.courses.flatMap(c => STATE.marksByCourse[c.id] || []);
+        const board = window.MathEngine.clutchRating(allMarks);
+        content.innerHTML = board.length
+            ? renderLeaderboardRows(board.map(b => ({
+                username: b.username,
+                value: `${b.improvement >= 0 ? '+' : ''}${b.improvement.toFixed(1)}%`,
+                sub: `${b.midtermPct.toFixed(0)}% → ${b.finalPct.toFixed(0)}%`,
+                rank: b.rank
+            })))
+            : '<p class="empty-state">Need both Midterm and Final marks logged to compute this.</p>';
+        return;
+    }
+
+    if (select.value === 'attendance') {
+        window.ParallaxDB.getAllAttendanceForCourses(STATE.courses.map(c => c.id)).then(allAttendance => {
+            const rows = CONFIG.USERS.map(username => {
+                const mine = allAttendance.filter(r => r.username === username);
+                const rate = window.MathEngine.attendanceRate(mine);
+                return { username, rate, count: mine.length };
+            }).filter(r => r.rate !== null).sort((a, b) => b.rate - a.rate);
+
+            content.innerHTML = rows.length
+                ? renderLeaderboardRows(rows.map((r, i) => ({ username: r.username, value: `${r.rate.toFixed(0)}%`, sub: `${r.count} classes tracked`, rank: i + 1 })))
+                : '<p class="empty-state">No attendance marked yet.</p>';
+        });
+        return;
+    }
+
     const course = STATE.courses.find(c => c.id === select.value);
     const marks = STATE.marksByCourse[select.value] || [];
-    const { standings } = window.GradingEngine.courseStandings(marks);
+    const { standings } = window.MathEngine.courseStandings(marks, course ? course.weightage_config : undefined);
 
     content.innerHTML = standings.length
         ? renderLeaderboardRows(standings.map(s => ({ username: s.username, value: `${s.percentage.toFixed(1)}%`, sub: s.letter, rank: s.rank })))
@@ -806,6 +929,136 @@ function showAddSemesterModal() {
 }
 
 // ============================================
+// ACTIVITIES / TASKS
+// ============================================
+
+async function renderActivities() {
+    const list = document.getElementById('activities-list');
+    if (!list) return;
+
+    const activities = await window.ParallaxDB.getActivities(STATE.courses.map(c => c.id));
+    STATE.activities = activities;
+
+    if (activities.length === 0) {
+        list.innerHTML = '<p class="empty-state">No upcoming tasks. Add a deadline to get reminders.</p>';
+        return;
+    }
+
+    const now = Date.now();
+    list.innerHTML = activities.map(a => {
+        const due = new Date(a.due_at);
+        const isOverdue = due.getTime() < now;
+        const course = STATE.courses.find(c => c.id === a.course_id);
+        return `
+            <div class="course-card">
+                <div class="course-title">${a.title} ${isOverdue ? '<span class="assessment-type assessment-type--overdue">overdue</span>' : ''}</div>
+                <div class="course-info">
+                    ${course ? `<p>Course: ${course.name}</p>` : '<p>General task</p>'}
+                    <p>Due: ${due.toLocaleString()}</p>
+                    ${a.description ? `<p>${a.description}</p>` : ''}
+                </div>
+                <button class="btn btn-secondary" onclick="deleteActivityConfirm('${a.id}')">Delete</button>
+            </div>
+        `;
+    }).join('');
+}
+
+function showAddActivityModal() {
+    const courseOptions = [{ value: '', label: 'General (no specific course)' }, ...STATE.courses.map(c => ({ value: c.id, label: c.name }))];
+
+    showFormModal(
+        'Add Task',
+        [
+            { id: 'title', label: 'Title', placeholder: 'e.g. Assignment 2 Submission' },
+            { id: 'courseId', label: 'Course', type: 'select', value: '', options: courseOptions },
+            { id: 'dueAt', label: 'Due Date & Time', type: 'datetime-local' },
+            { id: 'description', label: 'Notes (optional)', placeholder: 'Any extra detail' }
+        ],
+        'Add Task',
+        async (values) => {
+            if (!values.title || !values.dueAt) { showAlertModal('Missing info', 'Please enter a title and due date.'); return; }
+
+            const activity = await window.ParallaxDB.addActivity(values.courseId || null, values.title, values.description, new Date(values.dueAt).toISOString(), STATE.currentUser);
+            closeAppModal();
+            if (!activity) { showAlertModal('Error', 'Could not add this task.'); return; }
+
+            window.Notifications.showToast('Task added');
+            logActivity(`Added task: ${values.title}`);
+            renderActivities();
+        }
+    );
+}
+
+function deleteActivityConfirm(activityId) {
+    showConfirmModal('Delete Task', 'Remove this task for everyone?', async () => {
+        const ok = await window.ParallaxDB.deleteActivity(activityId);
+        if (!ok) { showAlertModal('Error', 'Could not delete this task.'); return; }
+        window.Notifications.showToast('Task deleted');
+        renderActivities();
+    });
+}
+
+async function checkForReminders() {
+    if (!STATE.currentUser) return;
+    await window.Notifications.requestNotificationPermission();
+    const activities = await window.ParallaxDB.getActivities(STATE.courses.map(c => c.id));
+    await window.Notifications.checkDeadlineReminders(STATE.currentUser, activities);
+}
+
+// ============================================
+// ONBOARDING WIZARD
+// ============================================
+
+async function maybeShowOnboarding() {
+    const profile = await window.ParallaxDB.getProfile(STATE.currentUser);
+    STATE.profile = profile;
+    if (profile && profile.onboarded) return;
+    showOnboardingStep1();
+}
+
+function showOnboardingStep1() {
+    showFormModal(
+        'Welcome — Quick Setup (1/2)',
+        [{ id: 'totalCreditHours', label: 'Total credit hours for your full degree', type: 'number', placeholder: 'e.g. 130' }],
+        'Next',
+        (values) => {
+            if (!values.totalCreditHours || values.totalCreditHours <= 0) {
+                showAlertModal('Missing info', 'Please enter your degree\'s total credit hours.');
+                return;
+            }
+            showOnboardingStep2(values.totalCreditHours);
+        }
+    );
+}
+
+function showOnboardingStep2(totalCreditHours) {
+    showFormModal(
+        'Welcome — Quick Setup (2/2)',
+        [{ id: 'semesterNumber', label: 'Which semester are you in right now?', type: 'number', placeholder: 'e.g. 3' }],
+        'Finish',
+        async (values) => {
+            if (!values.semesterNumber || values.semesterNumber <= 0) {
+                showAlertModal('Missing info', 'Please enter your current semester number.');
+                return;
+            }
+            const profile = await window.ParallaxDB.saveProfile(STATE.currentUser, totalCreditHours, values.semesterNumber);
+            closeAppModal();
+            if (!profile) { showAlertModal('Error', 'Could not save your setup.'); return; }
+            STATE.profile = profile;
+
+            if (values.semesterNumber > 1) {
+                showAlertModal(
+                    'One more thing',
+                    'Since this isn\'t your first semester, add your past semester GPAs from Settings → "Add Previous Semester" so your CGPA is accurate.'
+                );
+            } else {
+                window.Notifications.showToast('Setup complete — welcome to Parallax!');
+            }
+        }
+    );
+}
+
+// ============================================
 // MENU MANAGEMENT
 // ============================================
 
@@ -834,6 +1087,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('user-greeting').textContent = `Welcome, ${savedUser.charAt(0).toUpperCase() + savedUser.slice(1)}`;
             await loadUserData();
             showScreen('dashboard-screen');
+            await maybeShowOnboarding();
+            checkForReminders();
         }
     }
 
