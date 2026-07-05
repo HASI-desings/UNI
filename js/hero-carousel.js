@@ -103,10 +103,23 @@
     function setActiveIndex(index, { animate = true } = {}) {
         if (animate && isAnimating) return;
         activeIndex = ((index % COUNT) + COUNT) % COUNT;
+
+        if (animate) {
+            itemEls.forEach((el) => {
+                el.classList.remove('is-switching');
+                void el.offsetWidth; // restart the animation even if mid-flight
+                el.classList.add('is-switching');
+            });
+        }
+
         render();
+
         if (animate) {
             isAnimating = true;
-            window.setTimeout(() => { isAnimating = false; }, ANIMATION_MS);
+            window.setTimeout(() => {
+                isAnimating = false;
+                itemEls.forEach((el) => el.classList.remove('is-switching'));
+            }, ANIMATION_MS);
         }
     }
 
