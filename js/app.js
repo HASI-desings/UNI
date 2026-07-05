@@ -1,6 +1,5 @@
 /* ============================================
    PARALLAX PWA - MAIN APPLICATION
-   Pure JavaScript - No Dependencies
    ============================================ */
 
 // ============================================
@@ -11,18 +10,21 @@ const CONFIG = {
     SUPABASE_URL: 'https://bgaplkwkdsydoyzypdyj.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnYXBsa3drZHN5ZG95enlwZHlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxMDc5MjksImV4cCI6MjA5ODY4MzkyOX0.6GejkhL5abtYuyBFOn8Wqw_Ve8fhhHW',
     USERS: ['hussnain', 'faizan', 'alima', 'haroon', 'mahdiya'],
-    STORAGE_KEY_PREFIX: 'parallax_'
+    STORAGE_KEY_PREFIX: 'parallax_',
+    CURRENT_SEMESTER: 'Fall 2026' // bump this each new semester; old courses stay archived under their own semester
 };
 
 // ============================================
-// STATE MANAGEMENT
+// STATE
 // ============================================
 
 const STATE = {
     currentUser: null,
     isAuthenticated: false,
-    courses: [],
-    grades: [],
+    courses: [],            // shared catalog for CURRENT_SEMESTER
+    assessmentsByCourse: {}, // courseId -> [assessment]
+    marksByCourse: {},       // courseId -> full class marks rows
+    semesterRecords: [],     // this user's past semesters
     activityLog: [],
     deviceCapabilities: {}
 };
@@ -34,7 +36,6 @@ const STATE = {
 function detectDeviceCapabilities() {
     STATE.deviceCapabilities = {
         isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
-        isTablet: /iPad|Android(?!.*Mobile)/i.test(navigator.userAgent),
         hasServiceWorker: 'serviceWorker' in navigator,
         hasLocalStorage: (() => {
             try {
@@ -45,25 +46,104 @@ function detectDeviceCapabilities() {
             } catch (e) {
                 return false;
             }
-        })(),
-        hasIndexedDB: !!window.indexedDB,
-        hasNotifications: 'Notification' in window,
-        hasVibration: 'vibrate' in navigator,
-        screenWidth: window.innerWidth,
-        screenHeight: window.innerHeight,
-        pixelRatio: window.devicePixelRatio || 1,
-        touchSupport: () => {
-            return (('ontouchstart' in window) ||
-                    (navigator.maxTouchPoints > 0) ||
-                    (navigator.msMaxTouchPoints > 0));
-        }
+        })()
     };
-
-    console.log('Device Capabilities:', STATE.deviceCapabilities);
-    return STATE.deviceCapabilities;
 }
 
-const LOGIN_REVEAL_MS = 650; // matches the character's move-in transition
+function logActivity(action) {
+    STATE.activityLog.push({ action, timestamp: new Date().toISOString() });
+    if (STATE.deviceCapabilities.hasLocalStorage && STATE.currentUser) {
+        localStorage.setItem(CONFIG.STORAGE_KEY_PREFIX + 'activity_' + STATE.currentUser, JSON.stringify(STATE.activityLog.slice(-20)));
+    }
+    updateActivityLog();
+}
+
+// ============================================
+// THEMED MODAL SYSTEM
+// Replaces every native alert()/prompt()/confirm() with a modal that
+// matches the rest of the app (glass panel, character accent color).
+// ============================================
+
+function closeAppModal() {
+    const modal = document.getElementById('app-modal');
+    modal.classList.remove('is-open');
+    document.getElementById('app-modal-panel').innerHTML = '';
+}
+
+function openAppModal(innerHTML) {
+    document.getElementById('app-modal-panel').innerHTML = innerHTML;
+    document.getElementById('app-modal').classList.add('is-open');
+}
+
+// Simple message modal — replaces alert()
+function showAlertModal(title, message) {
+    openAppModal(`
+        <h3>${title}</h3>
+        <p class="app-modal__message">${message}</p>
+        <div class="app-modal__actions">
+            <button class="btn btn-primary full-width" onclick="closeAppModal()">OK</button>
+        </div>
+    `);
+}
+
+// Yes/No modal — replaces confirm(). onConfirm is called if the user confirms.
+function showConfirmModal(title, message, onConfirm) {
+    window.__pendingConfirm = onConfirm;
+    openAppModal(`
+        <h3>${title}</h3>
+        <p class="app-modal__message">${message}</p>
+        <div class="app-modal__actions app-modal__actions--split">
+            <button class="btn btn-ghost full-width" onclick="closeAppModal()">Cancel</button>
+            <button class="btn btn-danger full-width" onclick="window.__pendingConfirm && window.__pendingConfirm(); closeAppModal();">Confirm</button>
+        </div>
+    `);
+}
+
+// Generic form modal. fields: [{id, label, type, placeholder, value, options:[{value,label}]}]
+// onSubmit receives an object keyed by field id.
+function showFormModal(title, fields, submitLabel, onSubmit) {
+    const fieldsHtml = fields.map(f => {
+        if (f.type === 'select') {
+            const opts = f.options.map(o => `<option value="${o.value}" ${o.value === f.value ? 'selected' : ''}>${o.label}</option>`).join('');
+            return `
+                <div class="form-group">
+                    <label for="modal-${f.id}">${f.label}</label>
+                    <select id="modal-${f.id}">${opts}</select>
+                </div>`;
+        }
+        return `
+            <div class="form-group">
+                <label for="modal-${f.id}">${f.label}</label>
+                <input type="${f.type || 'text'}" id="modal-${f.id}" placeholder="${f.placeholder || ''}" value="${f.value != null ? f.value : ''}">
+            </div>`;
+    }).join('');
+
+    window.__pendingSubmit = () => {
+        const values = {};
+        fields.forEach(f => {
+            const el = document.getElementById(`modal-${f.id}`);
+            values[f.id] = f.type === 'number' ? parseFloat(el.value) : el.value.trim();
+        });
+        onSubmit(values);
+    };
+
+    openAppModal(`
+        <h3>${title}</h3>
+        <form onsubmit="event.preventDefault(); window.__pendingSubmit();">
+            ${fieldsHtml}
+            <div class="app-modal__actions app-modal__actions--split">
+                <button type="button" class="btn btn-ghost full-width" onclick="closeAppModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary full-width">${submitLabel}</button>
+            </div>
+        </form>
+    `);
+}
+
+// ============================================
+// LOGIN SCREEN — CHARACTER REVEAL SEQUENCE
+// ============================================
+
+const LOGIN_REVEAL_MS = 650;
 
 function resetLoginVisuals() {
     const charImg = document.getElementById('login-hero-char-img');
@@ -90,23 +170,19 @@ function revealLoginCharacter(userKey) {
     const submitBtn = document.getElementById('login-submit-btn');
     if (!character || !charImg) return;
 
-    // Reset anything left over from a previous selection
     if (submitBtn) submitBtn.classList.remove('is-visible');
     if (pinGroup) pinGroup.classList.remove('is-visible');
     if (nameBadge) nameBadge.classList.remove('is-visible');
 
-    // Background shifts to the selected user immediately
     window.Parallax.applyTheme(userKey);
 
-    // Fade the current character out, swap the art, fade the new one in —
-    // this way switching between two already-selected users still crossfades
     const wasVisible = charImg.classList.contains('is-visible');
     charImg.classList.remove('is-visible');
 
     const swapAndFadeIn = () => {
         charImg.src = character.image;
         charImg.alt = character.name;
-        void charImg.offsetWidth; // restart the transition
+        void charImg.offsetWidth;
         charImg.classList.add('is-visible');
     };
 
@@ -116,7 +192,6 @@ function revealLoginCharacter(userKey) {
         swapAndFadeIn();
     }
 
-    // Once the character settles, reveal their name top-right, then the PIN field
     window.setTimeout(() => {
         if (nameBadge) {
             nameBadge.textContent = character.name;
@@ -131,18 +206,14 @@ function revealLoginCharacter(userKey) {
 }
 
 function handleUserSelectChange(userKey) {
-    if (!userKey) {
-        resetLoginVisuals();
-        return;
-    }
+    if (!userKey) { resetLoginVisuals(); return; }
     revealLoginCharacter(userKey);
 }
 
 function handlePinInput(value) {
     const submitBtn = document.getElementById('login-submit-btn');
     if (!submitBtn) return;
-    const isComplete = value.length === 4 && /^\d{4}$/.test(value);
-    submitBtn.classList.toggle('is-visible', isComplete);
+    submitBtn.classList.toggle('is-visible', value.length === 4 && /^\d{4}$/.test(value));
 }
 
 function continueAsActiveCharacter() {
@@ -162,42 +233,32 @@ function continueAsActiveCharacter() {
 // ============================================
 
 function showScreen(screenId) {
-    // Hide all screens
-    document.querySelectorAll('.screen').forEach(screen => {
-        screen.classList.remove('active');
-    });
-
-    // Show target screen
+    document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
     const targetScreen = document.getElementById(screenId);
-    if (targetScreen) {
-        targetScreen.classList.add('active');
-    }
+    if (targetScreen) targetScreen.classList.add('active');
 
-    // Bottom nav only belongs to the authenticated app screens
     const bottomNav = document.querySelector('.bottom-nav');
     if (bottomNav) {
         const isPreAuthScreen = screenId === 'landing-screen' || screenId === 'login-screen';
         bottomNav.classList.toggle('is-hidden', isPreAuthScreen);
     }
 
-    // Starting a fresh login attempt (not arriving with a character already chosen)
     if (screenId === 'login-screen') {
         const select = document.getElementById('user-select');
         if (select && !select.value) resetLoginVisuals();
     }
 
-    // Close menu if open
+    // Lazily refresh screen content when navigating to it
+    if (screenId === 'courses-screen') renderCourses();
+    if (screenId === 'marks-screen') renderMarksOverview();
+    if (screenId === 'leaderboard-screen') renderLeaderboardScreen();
+
     closeMenu();
 }
 
 function navigateTo(screenId, element) {
-    // Update active nav item
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('active');
-    });
+    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
     element.classList.add('active');
-
-    // Show screen
     showScreen(screenId);
 }
 
@@ -205,7 +266,7 @@ function navigateTo(screenId, element) {
 // AUTHENTICATION
 // ============================================
 
-function handleLogin(event) {
+async function handleLogin(event) {
     event.preventDefault();
 
     const userSelect = document.getElementById('user-select');
@@ -213,39 +274,42 @@ function handleLogin(event) {
     const user = userSelect.value;
     const pin = pinInput.value;
 
-    if (!user || !pin) {
-        alert('Please select a user and enter a PIN');
+    if (!user || !pin) { showAlertModal('Missing info', 'Please select a user and enter a PIN.'); return; }
+    if (pin.length !== 4 || !/^\d+$/.test(pin)) { showAlertModal('Invalid PIN', 'PIN must be 4 digits.'); return; }
+
+    const submitBtn = document.getElementById('login-submit-btn');
+    if (submitBtn) submitBtn.textContent = 'Checking...';
+
+    const result = await window.ParallaxDB.login(user, pin);
+
+    if (submitBtn) submitBtn.textContent = 'Login';
+
+    if (!result.ok) {
+        if (result.reason === 'wrong-pin') {
+            showAlertModal('Incorrect PIN', 'That PIN doesn\'t match this account.');
+        } else {
+            showAlertModal('Login Failed', 'Something went wrong. Please try again.');
+        }
         return;
     }
 
-    if (pin.length !== 4 || !/^\d+$/.test(pin)) {
-        alert('PIN must be 4 digits');
-        return;
-    }
-
-    // Store authentication
     STATE.currentUser = user;
     STATE.isAuthenticated = true;
+    window.Parallax.applyTheme(user);
 
-    // Lock in this user's character theme across the app
-    if (window.Parallax) window.Parallax.applyTheme(user);
-
-    // Save to localStorage
     if (STATE.deviceCapabilities.hasLocalStorage) {
         localStorage.setItem(CONFIG.STORAGE_KEY_PREFIX + 'currentUser', user);
-        localStorage.setItem(CONFIG.STORAGE_KEY_PREFIX + 'pin_' + user, btoa(pin)); // Simple encoding
     }
 
-    // Update greeting
     document.getElementById('user-greeting').textContent = `Welcome, ${user.charAt(0).toUpperCase() + user.slice(1)}`;
 
-    // Load user data
-    loadUserData();
+    if (result.firstTime) {
+        showAlertModal('PIN Set', `This PIN is now saved for ${user.charAt(0).toUpperCase() + user.slice(1)}. Use it to log in from now on.`);
+    }
 
-    // Show dashboard
+    await loadUserData();
     showScreen('dashboard-screen');
 
-    // Clear form + reset the login screen's staged reveal for next time
     pinInput.value = '';
     resetLoginVisuals();
     userSelect.value = '';
@@ -255,101 +319,97 @@ function handleLogout() {
     STATE.currentUser = null;
     STATE.isAuthenticated = false;
     STATE.courses = [];
-    STATE.grades = [];
+    STATE.assessmentsByCourse = {};
+    STATE.marksByCourse = {};
+    STATE.semesterRecords = [];
     STATE.activityLog = [];
 
-    // Clear localStorage
     if (STATE.deviceCapabilities.hasLocalStorage) {
         localStorage.removeItem(CONFIG.STORAGE_KEY_PREFIX + 'currentUser');
     }
 
     showScreen('landing-screen');
+    closeMenu();
 }
 
 // ============================================
-// DATA MANAGEMENT
+// DATA LOADING
 // ============================================
 
-function loadUserData() {
-    // Load from localStorage (no fake data)
+async function loadUserData() {
     if (STATE.deviceCapabilities.hasLocalStorage) {
-        const storedCourses = localStorage.getItem(CONFIG.STORAGE_KEY_PREFIX + 'courses_' + STATE.currentUser);
-        const storedGrades = localStorage.getItem(CONFIG.STORAGE_KEY_PREFIX + 'grades_' + STATE.currentUser);
-
-        STATE.courses = storedCourses ? JSON.parse(storedCourses) : [];
-        STATE.grades = storedGrades ? JSON.parse(storedGrades) : [];
+        const storedActivity = localStorage.getItem(CONFIG.STORAGE_KEY_PREFIX + 'activity_' + STATE.currentUser);
+        STATE.activityLog = storedActivity ? JSON.parse(storedActivity) : [];
     }
+
+    STATE.courses = await window.ParallaxDB.getCourses(CONFIG.CURRENT_SEMESTER);
+    STATE.semesterRecords = await window.ParallaxDB.getSemesterRecords(STATE.currentUser);
+
+    // Pull assessments + marks for every current course (needed for dashboard GPA + leaderboards)
+    await Promise.all(STATE.courses.map(async course => {
+        STATE.assessmentsByCourse[course.id] = await window.ParallaxDB.getAssessments(course.id);
+        STATE.marksByCourse[course.id] = await window.ParallaxDB.getMarksForCourse(course.id);
+    }));
 
     updateDashboard();
     renderCourses();
-    renderGrades();
+    renderMarksOverview();
+    populateLeaderboardCourseOptions();
+}
+
+// ============================================
+// DASHBOARD
+// ============================================
+
+function currentSemesterStandingsFor(username) {
+    // Weighted across all of this semester's courses, weighted by credit hours
+    let totalWeightedPoints = 0;
+    let totalCredits = 0;
+    let anyGraded = false;
+
+    STATE.courses.forEach(course => {
+        const marks = STATE.marksByCourse[course.id] || [];
+        const { standings } = window.GradingEngine.courseStandings(marks);
+        const mine = standings.find(s => s.username === username);
+        if (mine) {
+            anyGraded = true;
+            totalWeightedPoints += mine.gradePoints * course.credit_hours;
+            totalCredits += course.credit_hours;
+        }
+    });
+
+    return {
+        gpa: anyGraded && totalCredits > 0 ? totalWeightedPoints / totalCredits : null,
+        credits: totalCredits
+    };
 }
 
 function updateDashboard() {
-    // Update metrics
-    updateMetrics();
-
-    // Update activity log
-    updateActivityLog();
-}
-
-function updateMetrics() {
     const coursesCount = STATE.courses.length;
-    const cgpa = calculateCGPA();
-    const termGPA = calculateTermGPA();
-    const avgGrade = calculateAverageGrade();
+    const currentCredits = STATE.courses.reduce((sum, c) => sum + Number(c.credit_hours), 0);
+    const completedCredits = STATE.semesterRecords.reduce((sum, r) => sum + Number(r.credit_hours), 0);
+
+    const cgpa = STATE.semesterRecords.length > 0
+        ? STATE.semesterRecords.reduce((sum, r) => sum + r.gpa * r.credit_hours, 0) / completedCredits
+        : null;
+
+    const latestSemester = STATE.semesterRecords[STATE.semesterRecords.length - 1];
+    const { gpa: termGPA } = currentSemesterStandingsFor(STATE.currentUser);
 
     document.getElementById('courses-count').textContent = coursesCount;
+    document.getElementById('current-credits-value').textContent = currentCredits;
+    document.getElementById('completed-credits-value').textContent = completedCredits;
     document.getElementById('cgpa-value').textContent = cgpa !== null ? cgpa.toFixed(2) : '-';
     document.getElementById('term-gpa-value').textContent = termGPA !== null ? termGPA.toFixed(2) : '-';
-    document.getElementById('avg-grade').textContent = avgGrade !== null ? avgGrade.toFixed(1) : '-';
-}
+    document.getElementById('prev-gpa-value').textContent = latestSemester ? latestSemester.gpa.toFixed(2) : '-';
+    document.getElementById('prev-gpa-label').textContent = latestSemester ? latestSemester.semester : 'GPA';
 
-function calculateCGPA() {
-    if (STATE.courses.length === 0) return null;
-
-    let totalPoints = 0;
-    let totalCredits = 0;
-
-    STATE.courses.forEach(course => {
-        const courseGrades = STATE.grades.filter(g => g.courseId === course.id);
-        if (courseGrades.length > 0) {
-            const avgGradePoints = courseGrades.reduce((sum, g) => sum + (g.gradePoints || 0), 0) / courseGrades.length;
-            totalPoints += avgGradePoints * (course.creditHours || 1);
-            totalCredits += course.creditHours || 1;
-        }
-    });
-
-    return totalCredits > 0 ? totalPoints / totalCredits : null;
-}
-
-function calculateTermGPA() {
-    if (STATE.courses.length === 0) return null;
-
-    let totalPoints = 0;
-    let totalCredits = 0;
-
-    STATE.courses.forEach(course => {
-        const courseGrades = STATE.grades.filter(g => g.courseId === course.id);
-        if (courseGrades.length > 0) {
-            const latestGrade = courseGrades[courseGrades.length - 1];
-            totalPoints += (latestGrade.gradePoints || 0) * (course.creditHours || 1);
-            totalCredits += course.creditHours || 1;
-        }
-    });
-
-    return totalCredits > 0 ? totalPoints / totalCredits : null;
-}
-
-function calculateAverageGrade() {
-    if (STATE.grades.length === 0) return null;
-
-    const totalGradePoints = STATE.grades.reduce((sum, g) => sum + (g.gradePoints || 0), 0);
-    return totalGradePoints / STATE.grades.length;
+    updateActivityLog();
 }
 
 function updateActivityLog() {
     const activityList = document.getElementById('activity-list');
+    if (!activityList) return;
 
     if (STATE.activityLog.length === 0) {
         activityList.innerHTML = '<p class="empty-state">No activity yet. Add your first course!</p>';
@@ -357,7 +417,7 @@ function updateActivityLog() {
     }
 
     activityList.innerHTML = STATE.activityLog
-        .slice(-5) // Show last 5 activities
+        .slice(-5)
         .reverse()
         .map(activity => `
             <div class="activity-item">
@@ -369,192 +429,380 @@ function updateActivityLog() {
 }
 
 // ============================================
-// COURSE MANAGEMENT
+// COURSES (shared catalog)
 // ============================================
 
-function showAddCourse() {
-    const courseName = prompt('Enter course name:');
-    if (!courseName) return;
+function showAddCourseModal() {
+    showFormModal(
+        'Add a Course',
+        [
+            { id: 'name', label: 'Course Name', placeholder: 'e.g. Data Structures' },
+            { id: 'creditHours', label: 'Credit Hours', type: 'number', value: 3 }
+        ],
+        'Add Course',
+        async (values) => {
+            if (!values.name) { showAlertModal('Missing info', 'Please enter a course name.'); return; }
+            if (!values.creditHours || values.creditHours <= 0) { showAlertModal('Missing info', 'Please enter valid credit hours.'); return; }
 
-    const creditHours = prompt('Enter credit hours (default 3):') || '3';
+            const course = await window.ParallaxDB.addCourse(values.name, values.creditHours, CONFIG.CURRENT_SEMESTER, STATE.currentUser);
+            closeAppModal();
+            if (!course) { showAlertModal('Error', 'Could not add course. It may already exist this semester.'); return; }
 
-    const course = {
-        id: Date.now().toString(),
-        name: courseName,
-        creditHours: parseFloat(creditHours),
-        createdAt: new Date().toISOString()
-    };
-
-    STATE.courses.push(course);
-
-    // Save to localStorage
-    if (STATE.deviceCapabilities.hasLocalStorage) {
-        localStorage.setItem(
-            CONFIG.STORAGE_KEY_PREFIX + 'courses_' + STATE.currentUser,
-            JSON.stringify(STATE.courses)
-        );
-    }
-
-    // Add activity
-    STATE.activityLog.push({
-        action: `Added course: ${courseName}`,
-        timestamp: new Date().toISOString()
-    });
-
-    updateDashboard();
-    renderCourses();
+            STATE.courses.push(course);
+            STATE.assessmentsByCourse[course.id] = [];
+            STATE.marksByCourse[course.id] = [];
+            logActivity(`Added course: ${values.name}`);
+            updateDashboard();
+            renderCourses();
+        }
+    );
 }
 
 function renderCourses() {
     const coursesList = document.getElementById('courses-list');
+    if (!coursesList) return;
 
     if (STATE.courses.length === 0) {
-        coursesList.innerHTML = '<p class="empty-state">No courses yet. Add your first course!</p>';
+        coursesList.innerHTML = '<p class="empty-state">No courses yet. Add the first one for this semester!</p>';
         return;
     }
 
-    coursesList.innerHTML = STATE.courses
-        .map(course => `
-            <div class="course-card">
-                <div class="course-title">${course.name}</div>
-                <div class="course-info">
-                    <p>Credit Hours: ${course.creditHours}</p>
-                    <p>Added: ${new Date(course.createdAt).toLocaleDateString()}</p>
-                </div>
-                <button class="btn btn-secondary" onclick="deleteCourse('${course.id}')">Delete</button>
+    coursesList.innerHTML = STATE.courses.map(course => `
+        <div class="course-card" onclick="openCourseDetail('${course.id}')">
+            <div class="course-title">${course.name}</div>
+            <div class="course-info">
+                <p>Credit Hours: ${course.credit_hours}</p>
+                <p>Added by: ${course.created_by ? course.created_by.charAt(0).toUpperCase() + course.created_by.slice(1) : 'Unknown'}</p>
             </div>
-        `)
-        .join('');
+            <button class="btn btn-secondary" onclick="event.stopPropagation(); deleteCourseConfirm('${course.id}')">Delete</button>
+        </div>
+    `).join('');
 }
 
-function deleteCourse(courseId) {
-    if (confirm('Delete this course?')) {
+function deleteCourseConfirm(courseId) {
+    showConfirmModal('Delete Course', 'This removes the course and all its assessments/marks for everyone. Continue?', async () => {
+        const ok = await window.ParallaxDB.deleteCourse(courseId);
+        if (!ok) { showAlertModal('Error', 'Could not delete this course.'); return; }
         STATE.courses = STATE.courses.filter(c => c.id !== courseId);
-
-        // Save to localStorage
-        if (STATE.deviceCapabilities.hasLocalStorage) {
-            localStorage.setItem(
-                CONFIG.STORAGE_KEY_PREFIX + 'courses_' + STATE.currentUser,
-                JSON.stringify(STATE.courses)
-            );
-        }
-
-        STATE.activityLog.push({
-            action: 'Deleted a course',
-            timestamp: new Date().toISOString()
-        });
-
+        delete STATE.assessmentsByCourse[courseId];
+        delete STATE.marksByCourse[courseId];
+        logActivity('Deleted a course');
         updateDashboard();
         renderCourses();
-    }
-}
-
-// ============================================
-// GRADE MANAGEMENT
-// ============================================
-
-const GRADE_POINTS = {
-    'A+': 4.0, 'A': 4.0, 'A-': 3.7,
-    'B+': 3.3, 'B': 3.0, 'B-': 2.7,
-    'C+': 2.3, 'C': 2.0, 'C-': 1.7,
-    'D+': 1.3, 'D': 1.0, 'F': 0.0
-};
-
-function showAddGrade() {
-    if (STATE.courses.length === 0) {
-        alert('Add a course first, then come back to record a grade.');
-        return;
-    }
-
-    const courseOptions = STATE.courses.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
-    const choice = prompt(`Which course is this grade for?\n\n${courseOptions}\n\nEnter the number:`);
-    if (!choice) return;
-
-    const course = STATE.courses[parseInt(choice, 10) - 1];
-    if (!course) {
-        alert("That number doesn't match a course.");
-        return;
-    }
-
-    const letterRaw = prompt('Enter the letter grade (A+, A, A-, B+, B, B-, C+, C, C-, D+, D, F):');
-    if (!letterRaw) return;
-
-    const letter = letterRaw.trim().toUpperCase();
-    if (!(letter in GRADE_POINTS)) {
-        alert('Please enter a valid letter grade, e.g. A, B+, C-.');
-        return;
-    }
-
-    const grade = {
-        id: Date.now().toString(),
-        courseId: course.id,
-        letter,
-        gradePoints: GRADE_POINTS[letter],
-        createdAt: new Date().toISOString()
-    };
-
-    STATE.grades.push(grade);
-
-    if (STATE.deviceCapabilities.hasLocalStorage) {
-        localStorage.setItem(
-            CONFIG.STORAGE_KEY_PREFIX + 'grades_' + STATE.currentUser,
-            JSON.stringify(STATE.grades)
-        );
-    }
-
-    STATE.activityLog.push({
-        action: `Recorded ${letter} in ${course.name}`,
-        timestamp: new Date().toISOString()
+        renderMarksOverview();
     });
-
-    updateDashboard();
-    renderGrades();
 }
 
-function renderGrades() {
-    const gradesList = document.getElementById('grades-list');
-    if (!gradesList) return;
+// ============================================
+// MARKS OVERVIEW (personal summary across courses)
+// ============================================
 
-    if (STATE.grades.length === 0) {
-        gradesList.innerHTML = '<p class="empty-state">No grades yet. Add courses first!</p>';
+function renderMarksOverview() {
+    const list = document.getElementById('marks-list');
+    if (!list) return;
+
+    if (STATE.courses.length === 0) {
+        list.innerHTML = '<p class="empty-state">No courses yet. Add one from the Courses tab first!</p>';
         return;
     }
 
-    gradesList.innerHTML = STATE.grades
-        .slice()
-        .reverse()
-        .map(grade => {
-            const course = STATE.courses.find(c => c.id === grade.courseId);
+    list.innerHTML = STATE.courses.map(course => {
+        const marks = STATE.marksByCourse[course.id] || [];
+        const { standings, classAverage } = window.GradingEngine.courseStandings(marks);
+        const mine = standings.find(s => s.username === STATE.currentUser);
+
+        return `
+            <div class="course-card" onclick="openCourseDetail('${course.id}')">
+                <div class="course-title">${course.name}</div>
+                <div class="course-info">
+                    <p>Your Grade: ${mine ? `${mine.letter} (${mine.percentage.toFixed(1)}%)` : 'Not graded yet'}</p>
+                    <p>Class Average: ${classAverage !== null ? classAverage.toFixed(1) + '%' : '-'}</p>
+                    <p>Your Rank: ${mine ? `#${mine.rank} of ${standings.length}` : '-'}</p>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// ============================================
+// COURSE DETAIL (assessments, marks entry, leaderboard)
+// ============================================
+
+let activeCourseDetailId = null;
+
+async function openCourseDetail(courseId) {
+    activeCourseDetailId = courseId;
+    const course = STATE.courses.find(c => c.id === courseId);
+    if (!course) return;
+
+    document.getElementById('course-detail-title').textContent = course.name;
+    showScreen('course-detail-screen');
+
+    // Refresh this course's data in case it changed
+    STATE.assessmentsByCourse[courseId] = await window.ParallaxDB.getAssessments(courseId);
+    STATE.marksByCourse[courseId] = await window.ParallaxDB.getMarksForCourse(courseId);
+
+    renderCourseDetail(course);
+}
+
+function renderCourseDetail(course) {
+    const assessments = STATE.assessmentsByCourse[course.id] || [];
+    const marks = STATE.marksByCourse[course.id] || [];
+    const { standings, classAverage } = window.GradingEngine.courseStandings(marks);
+    const mine = standings.find(s => s.username === STATE.currentUser);
+    const totalWeightageUsed = assessments.reduce((sum, a) => sum + Number(a.weightage), 0);
+
+    document.getElementById('course-detail-summary').innerHTML = `
+        <div class="metrics-grid metrics-grid--compact">
+            <div class="metric-card">
+                <div class="metric-label">Your Grade</div>
+                <div class="metric-value">${mine ? mine.letter : '-'}</div>
+                <div class="metric-trend">${mine ? mine.percentage.toFixed(1) + '%' : 'Not graded yet'}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Class Average</div>
+                <div class="metric-value">${classAverage !== null ? classAverage.toFixed(1) : '-'}</div>
+                <div class="metric-trend">Percent</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Your Rank</div>
+                <div class="metric-value">${mine ? '#' + mine.rank : '-'}</div>
+                <div class="metric-trend">of ${standings.length || 0}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Weightage Set</div>
+                <div class="metric-value">${totalWeightageUsed}%</div>
+                <div class="metric-trend">of 100%</div>
+            </div>
+        </div>
+        <p class="screen-subtext">Grades here are relative — your projected letter is based on how you compare to the class, not a fixed cutoff.</p>
+    `;
+
+    const assessmentsList = document.getElementById('course-assessments-list');
+    if (assessments.length === 0) {
+        assessmentsList.innerHTML = '<p class="empty-state">No assessments yet. Add a quiz, assignment, or exam.</p>';
+    } else {
+        assessmentsList.innerHTML = assessments.map(a => {
+            const myMark = marks.find(m => m.assessment_id === a.id && m.username === STATE.currentUser);
             return `
                 <div class="course-card">
-                    <div class="course-title">${course ? course.name : 'Unknown course'}</div>
+                    <div class="course-title">${a.title} <span class="assessment-type">${a.type}</span></div>
                     <div class="course-info">
-                        <p>Grade: ${grade.letter} (${grade.gradePoints.toFixed(1)} pts)</p>
-                        <p>Recorded: ${new Date(grade.createdAt).toLocaleDateString()}</p>
+                        <p>Total Marks: ${a.total_marks} · Weightage: ${a.weightage}%</p>
+                        <p>Your Marks: ${myMark ? `${myMark.obtained_marks} / ${a.total_marks}` : 'Not entered yet'}</p>
                     </div>
-                    <button class="btn btn-secondary" onclick="deleteGrade('${grade.id}')">Delete</button>
+                    <div class="course-card-actions">
+                        <button class="btn btn-primary" onclick="showEnterMarksModal('${a.id}', ${a.total_marks}, '${a.title.replace(/'/g, "\\'")}')">${myMark ? 'Update' : 'Enter'} Marks</button>
+                        <button class="btn btn-secondary" onclick="showAssessmentLeaderboard('${a.id}', '${a.title.replace(/'/g, "\\'")}', ${a.total_marks})">Leaderboard</button>
+                        <button class="btn btn-secondary" onclick="deleteAssessmentConfirm('${a.id}')">Delete</button>
+                    </div>
                 </div>
             `;
-        })
-        .join('');
+        }).join('');
+    }
+
+    const leaderboardList = document.getElementById('course-leaderboard-list');
+    if (standings.length === 0) {
+        leaderboardList.innerHTML = '<p class="empty-state">No marks recorded yet.</p>';
+    } else {
+        leaderboardList.innerHTML = renderLeaderboardRows(standings.map(s => ({
+            username: s.username,
+            value: `${s.percentage.toFixed(1)}%`,
+            sub: s.letter,
+            rank: s.rank
+        })));
+    }
 }
 
-function deleteGrade(gradeId) {
-    if (confirm('Delete this grade?')) {
-        STATE.grades = STATE.grades.filter(g => g.id !== gradeId);
-
-        if (STATE.deviceCapabilities.hasLocalStorage) {
-            localStorage.setItem(
-                CONFIG.STORAGE_KEY_PREFIX + 'grades_' + STATE.currentUser,
-                JSON.stringify(STATE.grades)
+function showAddAssessmentModal() {
+    showFormModal(
+        'Add Assessment',
+        [
+            { id: 'type', label: 'Type', type: 'select', value: 'quiz', options: [
+                { value: 'quiz', label: 'Quiz' },
+                { value: 'assignment', label: 'Assignment' },
+                { value: 'presentation', label: 'Presentation' },
+                { value: 'midterm', label: 'Midterm' },
+                { value: 'final', label: 'Final' }
+            ]},
+            { id: 'title', label: 'Title', placeholder: 'e.g. Quiz 1' },
+            { id: 'totalMarks', label: 'Total Marks', type: 'number', value: 10 },
+            { id: 'weightage', label: 'Weightage (%)', type: 'number', value: 10 }
+        ],
+        'Add Assessment',
+        async (values) => {
+            if (!values.title || !values.totalMarks || !values.weightage) {
+                showAlertModal('Missing info', 'Please fill in all fields.');
+                return;
+            }
+            const assessment = await window.ParallaxDB.addAssessment(
+                activeCourseDetailId, values.type, values.title, values.totalMarks, values.weightage, STATE.currentUser
             );
+            closeAppModal();
+            if (!assessment) { showAlertModal('Error', 'Could not add this assessment.'); return; }
+
+            STATE.assessmentsByCourse[activeCourseDetailId].push(assessment);
+            logActivity(`Added ${values.type}: ${values.title}`);
+            const course = STATE.courses.find(c => c.id === activeCourseDetailId);
+            renderCourseDetail(course);
         }
+    );
+}
 
-        STATE.activityLog.push({ action: 'Deleted a grade', timestamp: new Date().toISOString() });
+function deleteAssessmentConfirm(assessmentId) {
+    showConfirmModal('Delete Assessment', 'This removes it and everyone\'s marks for it. Continue?', async () => {
+        const ok = await window.ParallaxDB.deleteAssessment(assessmentId);
+        if (!ok) { showAlertModal('Error', 'Could not delete this assessment.'); return; }
+        STATE.assessmentsByCourse[activeCourseDetailId] = STATE.assessmentsByCourse[activeCourseDetailId].filter(a => a.id !== assessmentId);
+        STATE.marksByCourse[activeCourseDetailId] = await window.ParallaxDB.getMarksForCourse(activeCourseDetailId);
+        logActivity('Deleted an assessment');
+        const course = STATE.courses.find(c => c.id === activeCourseDetailId);
+        renderCourseDetail(course);
+    });
+}
 
-        updateDashboard();
-        renderGrades();
+function showEnterMarksModal(assessmentId, totalMarks, title) {
+    showFormModal(
+        `Marks — ${title}`,
+        [{ id: 'obtained', label: `Obtained (out of ${totalMarks})`, type: 'number' }],
+        'Save',
+        async (values) => {
+            if (values.obtained == null || isNaN(values.obtained)) { showAlertModal('Missing info', 'Please enter your marks.'); return; }
+            if (values.obtained > totalMarks) { showAlertModal('Too high', `Marks can't exceed ${totalMarks}.`); return; }
+
+            const result = await window.ParallaxDB.upsertMark(assessmentId, STATE.currentUser, values.obtained);
+            closeAppModal();
+            if (!result) { showAlertModal('Error', 'Could not save your marks.'); return; }
+
+            STATE.marksByCourse[activeCourseDetailId] = await window.ParallaxDB.getMarksForCourse(activeCourseDetailId);
+            logActivity(`Recorded marks for ${title}`);
+            updateDashboard();
+            const course = STATE.courses.find(c => c.id === activeCourseDetailId);
+            renderCourseDetail(course);
+        }
+    );
+}
+
+function showAssessmentLeaderboard(assessmentId, title, totalMarks) {
+    const marks = (STATE.marksByCourse[activeCourseDetailId] || []).filter(m => m.assessment_id === assessmentId);
+    const board = window.GradingEngine.assessmentLeaderboard(marks, totalMarks);
+
+    const rowsHtml = board.length
+        ? renderLeaderboardRows(board.map(b => ({ username: b.username, value: `${b.obtained}/${totalMarks}`, sub: `${b.percentage.toFixed(1)}%`, rank: b.rank })))
+        : '<p class="empty-state">No marks recorded yet.</p>';
+
+    openAppModal(`
+        <h3>${title} — Leaderboard</h3>
+        <div class="leaderboard-list">${rowsHtml}</div>
+        <div class="app-modal__actions">
+            <button class="btn btn-primary full-width" onclick="closeAppModal()">Close</button>
+        </div>
+    `);
+}
+
+// ============================================
+// LEADERBOARD SCREEN
+// ============================================
+
+function populateLeaderboardCourseOptions() {
+    const select = document.getElementById('leaderboard-course-select');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="overall">Overall (Current Semester)</option>' +
+        STATE.courses.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    select.value = STATE.courses.some(c => c.id === current) ? current : 'overall';
+}
+
+function renderLeaderboardScreen() {
+    populateLeaderboardCourseOptions();
+    renderSelectedLeaderboard();
+}
+
+function renderSelectedLeaderboard() {
+    const select = document.getElementById('leaderboard-course-select');
+    const content = document.getElementById('leaderboard-content');
+    if (!select || !content) return;
+
+    if (select.value === 'overall') {
+        const rows = CONFIG.USERS.map(username => {
+            const { gpa, credits } = currentSemesterStandingsFor(username);
+            return { username, gpa, credits };
+        }).filter(r => r.gpa !== null).sort((a, b) => b.gpa - a.gpa);
+
+        content.innerHTML = rows.length
+            ? renderLeaderboardRows(rows.map((r, i) => ({ username: r.username, value: r.gpa.toFixed(2), sub: 'Projected GPA', rank: i + 1 })))
+            : '<p class="empty-state">Add courses and marks to see rankings.</p>';
+        return;
     }
+
+    const course = STATE.courses.find(c => c.id === select.value);
+    const marks = STATE.marksByCourse[select.value] || [];
+    const { standings } = window.GradingEngine.courseStandings(marks);
+
+    content.innerHTML = standings.length
+        ? renderLeaderboardRows(standings.map(s => ({ username: s.username, value: `${s.percentage.toFixed(1)}%`, sub: s.letter, rank: s.rank })))
+        : `<p class="empty-state">No marks recorded yet for ${course ? course.name : 'this course'}.</p>`;
+}
+
+function renderLeaderboardRows(rows) {
+    const medals = { 1: '🥇', 2: '🥈', 3: '🥉' };
+    return rows.map(r => `
+        <div class="leaderboard-row ${r.username === STATE.currentUser ? 'leaderboard-row--me' : ''}">
+            <div class="leaderboard-rank">${medals[r.rank] || '#' + r.rank}</div>
+            <div class="leaderboard-name">${r.username.charAt(0).toUpperCase() + r.username.slice(1)}</div>
+            <div class="leaderboard-value">
+                <span>${r.value}</span>
+                <span class="leaderboard-sub">${r.sub}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ============================================
+// SETTINGS
+// ============================================
+
+function showChangePINModal() {
+    showFormModal(
+        'Change PIN',
+        [{ id: 'pin', label: 'New 4-digit PIN', type: 'password' }],
+        'Save',
+        async (values) => {
+            if (!values.pin || values.pin.length !== 4 || !/^\d+$/.test(values.pin)) {
+                showAlertModal('Invalid PIN', 'PIN must be exactly 4 digits.');
+                return;
+            }
+            const ok = await window.ParallaxDB.changePin(STATE.currentUser, values.pin);
+            closeAppModal();
+            showAlertModal(ok ? 'PIN Updated' : 'Error', ok ? 'Your PIN has been changed.' : 'Could not update your PIN.');
+        }
+    );
+}
+
+function showAddSemesterModal() {
+    showFormModal(
+        'Add Previous Semester',
+        [
+            { id: 'semester', label: 'Semester', placeholder: 'e.g. Spring 2026' },
+            { id: 'gpa', label: 'GPA', type: 'number', placeholder: 'e.g. 3.7' },
+            { id: 'creditHours', label: 'Credit Hours', type: 'number', placeholder: 'e.g. 18' }
+        ],
+        'Save',
+        async (values) => {
+            if (!values.semester || !values.gpa || !values.creditHours) {
+                showAlertModal('Missing info', 'Please fill in all fields.');
+                return;
+            }
+            const record = await window.ParallaxDB.upsertSemesterRecord(STATE.currentUser, values.semester, values.gpa, values.creditHours);
+            closeAppModal();
+            if (!record) { showAlertModal('Error', 'Could not save this semester.'); return; }
+
+            STATE.semesterRecords = STATE.semesterRecords.filter(r => r.semester !== values.semester);
+            STATE.semesterRecords.push(record);
+            logActivity(`Added semester record: ${values.semester}`);
+            updateDashboard();
+        }
+    );
 }
 
 // ============================================
@@ -562,47 +810,21 @@ function deleteGrade(gradeId) {
 // ============================================
 
 function toggleMenu() {
-    const modal = document.getElementById('menu-modal');
-    modal.classList.toggle('active');
+    document.getElementById('menu-modal').classList.toggle('active');
 }
 
 function closeMenu() {
-    const modal = document.getElementById('menu-modal');
-    modal.classList.remove('active');
+    document.getElementById('menu-modal').classList.remove('active');
 }
 
 // ============================================
-// SETTINGS
+// INIT
 // ============================================
 
-function showChangePIN() {
-    const newPin = prompt('Enter new PIN (4 digits):');
-    if (!newPin) return;
-
-    if (newPin.length !== 4 || !/^\d+$/.test(newPin)) {
-        alert('PIN must be 4 digits');
-        return;
-    }
-
-    if (STATE.deviceCapabilities.hasLocalStorage) {
-        localStorage.setItem(CONFIG.STORAGE_KEY_PREFIX + 'pin_' + STATE.currentUser, btoa(newPin));
-    }
-
-    alert('PIN changed successfully!');
-}
-
-// ============================================
-// EVENT LISTENERS
-// ============================================
-
-document.addEventListener('DOMContentLoaded', () => {
-    // Detect device capabilities
+document.addEventListener('DOMContentLoaded', async () => {
     detectDeviceCapabilities();
-
-    // Login screen starts with no character revealed until a name is chosen
     resetLoginVisuals();
 
-    // Check if user is already logged in
     if (STATE.deviceCapabilities.hasLocalStorage) {
         const savedUser = localStorage.getItem(CONFIG.STORAGE_KEY_PREFIX + 'currentUser');
         if (savedUser) {
@@ -610,63 +832,15 @@ document.addEventListener('DOMContentLoaded', () => {
             STATE.isAuthenticated = true;
             if (window.Parallax) window.Parallax.applyTheme(savedUser);
             document.getElementById('user-greeting').textContent = `Welcome, ${savedUser.charAt(0).toUpperCase() + savedUser.slice(1)}`;
-            loadUserData();
+            await loadUserData();
             showScreen('dashboard-screen');
         }
     }
 
-    // Handle window resize for responsive updates
-    window.addEventListener('resize', () => {
-        STATE.deviceCapabilities.screenWidth = window.innerWidth;
-        STATE.deviceCapabilities.screenHeight = window.innerHeight;
-    });
-
-    // Close menu on outside click
     document.addEventListener('click', (e) => {
         const modal = document.getElementById('menu-modal');
         if (modal.classList.contains('active') && !modal.contains(e.target) && !e.target.classList.contains('btn-icon')) {
             closeMenu();
         }
     });
-
-    // Handle visibility change for re-lock
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            // App is hidden
-        } else {
-            // App is visible - could re-lock here
-            // For now, just log
-            console.log('App resumed');
-        }
-    });
-
-    // Render initial courses list
-    renderCourses();
 });
-
-// ============================================
-// SERVICE WORKER REGISTRATION
-// ============================================
-
-if ('serviceWorker' in navigator && STATE.deviceCapabilities.hasServiceWorker) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js')
-            .then(reg => console.log('Service Worker registered'))
-            .catch(err => console.log('Service Worker registration failed:', err));
-    });
-}
-
-// ============================================
-// EXPORT FOR TESTING
-// ============================================
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        STATE,
-        CONFIG,
-        detectDeviceCapabilities,
-        calculateCGPA,
-        calculateTermGPA,
-        calculateAverageGrade
-    };
-}
