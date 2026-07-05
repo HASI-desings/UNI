@@ -97,22 +97,32 @@
                 <div class="metric-card">
                     <div class="metric-label">CGPA</div>
                     <div class="metric-value" id="cgpa-value">-</div>
-                    <div class="metric-trend">Overall</div>
+                    <div class="metric-trend">Overall · Completed Semesters</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-label">Current Term</div>
+                    <div class="metric-label">Current Semester</div>
                     <div class="metric-value" id="term-gpa-value">-</div>
-                    <div class="metric-trend">GPA</div>
+                    <div class="metric-trend">Projected GPA</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Previous Semester</div>
+                    <div class="metric-value" id="prev-gpa-value">-</div>
+                    <div class="metric-trend" id="prev-gpa-label">GPA</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Completed Hours</div>
+                    <div class="metric-value" id="completed-credits-value">0</div>
+                    <div class="metric-trend">Credit Hours</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">This Semester</div>
+                    <div class="metric-value" id="current-credits-value">0</div>
+                    <div class="metric-trend">Credit Hours</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Courses</div>
                     <div class="metric-value" id="courses-count">0</div>
-                    <div class="metric-trend">Total</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Average</div>
-                    <div class="metric-value" id="avg-grade">-</div>
-                    <div class="metric-trend">Grade</div>
+                    <div class="metric-trend">This Semester</div>
                 </div>
             </div>
 
@@ -126,40 +136,76 @@
         </div>
     </section>
 
-    <!-- Courses Screen -->
+    <!-- Courses Screen (shared catalog) -->
     <section id="courses-screen" class="screen">
         <div class="courses-container">
             <div class="screen-header">
                 <h2>Courses</h2>
-                <button class="btn btn-primary" onclick="showAddCourse()">+ Add</button>
+                <button class="btn btn-primary" onclick="showAddCourseModal()">+ Add</button>
             </div>
+            <p class="screen-subtext">Shared with everyone — add a course once, the whole cohort sees it.</p>
             <div id="courses-list" class="courses-list">
-                <p class="empty-state">No courses yet. Add your first course!</p>
+                <p class="empty-state">No courses yet. Add the first one for this semester!</p>
             </div>
         </div>
     </section>
 
-    <!-- Grades Screen -->
-    <section id="grades-screen" class="screen">
+    <!-- Marks Screen (personal summary across courses) -->
+    <section id="marks-screen" class="screen">
         <div class="grades-container">
             <div class="screen-header">
-                <h2>Grades</h2>
-                <button class="btn btn-primary" onclick="showAddGrade()">+ Add</button>
+                <h2>Marks</h2>
             </div>
-            <div id="grades-list" class="grades-list">
-                <p class="empty-state">No grades yet. Add courses first!</p>
+            <p class="screen-subtext">Tap a course to enter marks, set weightage, and see where you stand.</p>
+            <div id="marks-list" class="grades-list">
+                <p class="empty-state">No courses yet. Add one from the Courses tab first!</p>
             </div>
         </div>
     </section>
 
-    <!-- What-If Calculator Screen -->
-    <section id="whatif-screen" class="screen">
+    <!-- Course Detail Screen (assessments, marks entry, projected grade, leaderboard) -->
+    <section id="course-detail-screen" class="screen">
+        <div class="course-detail-container">
+            <div class="screen-header">
+                <button class="btn btn-ghost" onclick="showScreen('marks-screen')">← Back</button>
+                <h2 id="course-detail-title">Course</h2>
+            </div>
+
+            <div class="course-detail-summary" id="course-detail-summary"></div>
+
+            <div class="course-detail-section">
+                <div class="screen-header">
+                    <h3>Assessments</h3>
+                    <button class="btn btn-primary" onclick="showAddAssessmentModal()">+ Add</button>
+                </div>
+                <div id="course-assessments-list" class="assessments-list">
+                    <p class="empty-state">No assessments yet. Add a quiz, assignment, or exam.</p>
+                </div>
+            </div>
+
+            <div class="course-detail-section">
+                <h3>Course Leaderboard</h3>
+                <div id="course-leaderboard-list" class="leaderboard-list">
+                    <p class="empty-state">No marks recorded yet.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Leaderboard Screen -->
+    <section id="leaderboard-screen" class="screen">
         <div class="whatif-container">
             <div class="screen-header">
-                <h2>What-If Calculator</h2>
+                <h2>Leaderboard</h2>
             </div>
-            <div class="whatif-content">
-                <p class="empty-state">Add courses to use the What-If calculator</p>
+            <div class="form-group">
+                <label for="leaderboard-course-select">Compare by</label>
+                <select id="leaderboard-course-select" onchange="renderSelectedLeaderboard()">
+                    <option value="overall">Overall (Current Semester)</option>
+                </select>
+            </div>
+            <div id="leaderboard-content" class="leaderboard-list">
+                <p class="empty-state">Add courses and marks to see rankings.</p>
             </div>
         </div>
     </section>
@@ -173,15 +219,11 @@
             <div class="settings-list">
                 <div class="setting-item">
                     <span>Change PIN</span>
-                    <button class="btn btn-secondary" onclick="showChangePIN()">Change</button>
+                    <button class="btn btn-secondary" onclick="showChangePINModal()">Change</button>
                 </div>
                 <div class="setting-item">
-                    <span>Notifications</span>
-                    <input type="checkbox" id="notifications-toggle">
-                </div>
-                <div class="setting-item">
-                    <span>Dark Mode</span>
-                    <input type="checkbox" id="dark-mode-toggle" checked>
+                    <span>Add Previous Semester</span>
+                    <button class="btn btn-secondary" onclick="showAddSemesterModal()">Add</button>
                 </div>
                 <button class="btn btn-danger full-width" onclick="handleLogout()">Logout</button>
             </div>
@@ -198,13 +240,13 @@
             <span class="nav-icon">📚</span>
             <span class="nav-label">Courses</span>
         </button>
-        <button class="nav-item" onclick="navigateTo('grades-screen', this)">
+        <button class="nav-item" onclick="navigateTo('marks-screen', this)">
             <span class="nav-icon">📝</span>
-            <span class="nav-label">Grades</span>
+            <span class="nav-label">Marks</span>
         </button>
-        <button class="nav-item" onclick="navigateTo('whatif-screen', this)">
-            <span class="nav-icon">🔮</span>
-            <span class="nav-label">What-If</span>
+        <button class="nav-item" onclick="navigateTo('leaderboard-screen', this)">
+            <span class="nav-icon">🏆</span>
+            <span class="nav-label">Leaderboard</span>
         </button>
         <button class="nav-item" onclick="navigateTo('settings-screen', this)">
             <span class="nav-icon">⚙️</span>
@@ -212,7 +254,7 @@
         </button>
     </nav>
 
-    <!-- Modals -->
+    <!-- Menu Modal -->
     <div id="menu-modal" class="modal">
         <div class="modal-content">
             <button class="modal-close" onclick="toggleMenu()">✕</button>
@@ -222,7 +264,16 @@
         </div>
     </div>
 
+    <!-- Generic App Modal (replaces native prompt/alert/confirm everywhere) -->
+    <div id="app-modal" class="app-modal">
+        <div class="app-modal__backdrop" onclick="closeAppModal()"></div>
+        <div class="app-modal__panel" id="app-modal-panel"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/hero-carousel.js"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/grading-engine.js"></script>
     <script src="js/app.js"></script>
     <script>
         if ('serviceWorker' in navigator) {
