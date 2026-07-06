@@ -434,6 +434,21 @@ function updateActivityLog() {
 // COURSES (shared catalog)
 // ============================================
 
+function describeDbError(error) {
+    if (!error) return 'Something went wrong. Please try again.';
+    const msg = error.message || '';
+    if (error.code === '42703' || msg.includes('does not exist')) {
+        return `Database is missing a column/table this needs (${msg}). Run the latest schema migration (supabase-schema-v2.sql) in Supabase, then try again.`;
+    }
+    if (error.code === '23505' || msg.includes('duplicate key')) {
+        return 'That already exists — try a different name.';
+    }
+    if (error.code === '42P01') {
+        return `A required table doesn't exist yet (${msg}). Run supabase-schema.sql and supabase-schema-v2.sql in Supabase.`;
+    }
+    return msg || 'Something went wrong. Please try again.';
+}
+
 function showAddCourseModal() {
     showFormModal(
         'Add a Course',
@@ -446,9 +461,9 @@ function showAddCourseModal() {
             if (!values.name) { showAlertModal('Missing info', 'Please enter a course name.'); return; }
             if (!values.creditHours || values.creditHours <= 0) { showAlertModal('Missing info', 'Please enter valid credit hours.'); return; }
 
-            const course = await window.ParallaxDB.addCourse(values.name, values.creditHours, CONFIG.CURRENT_SEMESTER, STATE.currentUser);
+            const { data: course, error } = await window.ParallaxDB.addCourse(values.name, values.creditHours, CONFIG.CURRENT_SEMESTER, STATE.currentUser);
             closeAppModal();
-            if (!course) { showAlertModal('Error', 'Could not add course. It may already exist this semester.'); return; }
+            if (!course) { showAlertModal('Could not add course', describeDbError(error)); return; }
 
             STATE.courses.push(course);
             STATE.assessmentsByCourse[course.id] = [];
@@ -660,9 +675,9 @@ function showWeightageModal() {
                 showAlertModal('Doesn\'t add up', 'These weightages must total exactly 100%.');
                 return;
             }
-            const updated = await window.ParallaxDB.updateWeightageConfig(activeCourseDetailId, newConfig);
+            const { data: updated, error } = await window.ParallaxDB.updateWeightageConfig(activeCourseDetailId, newConfig);
             closeAppModal();
-            if (!updated) { showAlertModal('Error', 'Could not save the weightage matrix.'); return; }
+            if (!updated) { showAlertModal('Could not save', describeDbError(error)); return; }
 
             const idx = STATE.courses.findIndex(c => c.id === activeCourseDetailId);
             STATE.courses[idx] = updated;
@@ -684,9 +699,9 @@ function showMarkAttendanceModal() {
         ]}],
         'Save',
         async (values) => {
-            const result = await window.ParallaxDB.markAttendance(activeCourseDetailId, STATE.currentUser, todayStr, values.status);
+            const { data: result, error } = await window.ParallaxDB.markAttendance(activeCourseDetailId, STATE.currentUser, todayStr, values.status);
             closeAppModal();
-            if (!result) { showAlertModal('Error', 'Could not save attendance.'); return; }
+            if (!result) { showAlertModal('Could not save', describeDbError(error)); return; }
             window.Notifications.showToast('Attendance saved');
             renderAttendanceSummary(activeCourseDetailId);
         }
@@ -714,11 +729,11 @@ function showAddAssessmentModal() {
                 showAlertModal('Missing info', 'Please fill in the title and total marks.');
                 return;
             }
-            const assessment = await window.ParallaxDB.addAssessment(
+            const { data: assessment, error } = await window.ParallaxDB.addAssessment(
                 activeCourseDetailId, values.type, values.title, values.totalMarks, STATE.currentUser, values.classAverage
             );
             closeAppModal();
-            if (!assessment) { showAlertModal('Error', 'Could not add this assessment.'); return; }
+            if (!assessment) { showAlertModal('Could not add assessment', describeDbError(error)); return; }
 
             STATE.assessmentsByCourse[activeCourseDetailId].push(assessment);
             logActivity(`Added ${values.type}: ${values.title}`);
@@ -749,9 +764,9 @@ function showEnterMarksModal(assessmentId, totalMarks, title) {
             if (values.obtained == null || isNaN(values.obtained)) { showAlertModal('Missing info', 'Please enter your marks.'); return; }
             if (values.obtained > totalMarks) { showAlertModal('Too high', `Marks can't exceed ${totalMarks}.`); return; }
 
-            const result = await window.ParallaxDB.upsertMark(assessmentId, STATE.currentUser, values.obtained);
+            const { data: result, error } = await window.ParallaxDB.upsertMark(assessmentId, STATE.currentUser, values.obtained);
             closeAppModal();
-            if (!result) { showAlertModal('Error', 'Could not save your marks.'); return; }
+            if (!result) { showAlertModal('Could not save marks', describeDbError(error)); return; }
 
             STATE.marksByCourse[activeCourseDetailId] = await window.ParallaxDB.getMarksForCourse(activeCourseDetailId);
             logActivity(`Recorded marks for ${title}`);
@@ -906,13 +921,14 @@ function showAddSemesterModal() {
                 showAlertModal('Missing info', 'Please fill in all fields.');
                 return;
             }
-            const record = await window.ParallaxDB.upsertSemesterRecord(STATE.currentUser, values.semester, values.gpa, values.creditHours);
+            const { data: record, error } = await window.ParallaxDB.upsertSemesterRecord(STATE.currentUser, values.semester, values.gpa, values.creditHours);
             closeAppModal();
-            if (!record) { showAlertModal('Error', 'Could not save this semester.'); return; }
+            if (!record) { showAlertModal('Could not save', describeDbError(error)); return; }
 
             STATE.semesterRecords = STATE.semesterRecords.filter(r => r.semester !== values.semester);
             STATE.semesterRecords.push(record);
             logActivity(`Added semester record: ${values.semester}`);
+            window.Notifications.showToast(`${values.semester} saved`);
             updateDashboard();
         }
     );
@@ -968,9 +984,9 @@ function showAddActivityModal() {
         async (values) => {
             if (!values.title || !values.dueAt) { showAlertModal('Missing info', 'Please enter a title and due date.'); return; }
 
-            const activity = await window.ParallaxDB.addActivity(values.courseId || null, values.title, values.description, new Date(values.dueAt).toISOString(), STATE.currentUser);
+            const { data: activity, error } = await window.ParallaxDB.addActivity(values.courseId || null, values.title, values.description, new Date(values.dueAt).toISOString(), STATE.currentUser);
             closeAppModal();
-            if (!activity) { showAlertModal('Error', 'Could not add this task.'); return; }
+            if (!activity) { showAlertModal('Could not add task', describeDbError(error)); return; }
 
             window.Notifications.showToast('Task added');
             logActivity(`Added task: ${values.title}`);
@@ -1031,9 +1047,9 @@ function showOnboardingStep2(totalCreditHours) {
                 showAlertModal('Missing info', 'Please enter your current semester number.');
                 return;
             }
-            const profile = await window.ParallaxDB.saveProfile(STATE.currentUser, totalCreditHours, values.semesterNumber);
+            const { data: profile, error } = await window.ParallaxDB.saveProfile(STATE.currentUser, totalCreditHours, values.semesterNumber);
             closeAppModal();
-            if (!profile) { showAlertModal('Error', 'Could not save your setup.'); return; }
+            if (!profile) { showAlertModal('Could not save setup', describeDbError(error)); return; }
             STATE.profile = profile;
 
             if (values.semesterNumber > 1) {
