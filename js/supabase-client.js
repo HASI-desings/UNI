@@ -59,8 +59,8 @@
                 weightage_config: weightageConfig || window.MathEngine.DEFAULT_WEIGHTAGE
             })
             .select().single();
-        if (error) { console.error(error); return null; }
-        return data;
+        if (error) { console.error(error); return { data: null, error }; }
+        return { data, error: null };
     }
 
     async function updateWeightageConfig(courseId, weightageConfig) {
@@ -68,8 +68,8 @@
             .update({ weightage_config: weightageConfig })
             .eq('id', courseId)
             .select().single();
-        if (error) { console.error(error); return null; }
-        return data;
+        if (error) { console.error(error); return { data: null, error }; }
+        return { data, error: null };
     }
 
     async function deleteCourse(courseId) {
@@ -91,8 +91,8 @@
                 class_average: (classAverage != null && !isNaN(classAverage)) ? classAverage : null
             })
             .select().single();
-        if (error) { console.error(error); return null; }
-        return data;
+        if (error) { console.error(error); return { data: null, error }; }
+        return { data, error: null };
     }
 
     async function deleteAssessment(assessmentId) {
@@ -108,8 +108,8 @@
                 { onConflict: 'assessment_id,username' }
             )
             .select().single();
-        if (error) { console.error(error); return null; }
-        return data;
+        if (error) { console.error(error); return { data: null, error }; }
+        return { data, error: null };
     }
 
     async function getMarksForCourse(courseId) {
@@ -143,8 +143,8 @@
                 onboarded: true
             }, { onConflict: 'username' })
             .select().single();
-        if (error) { console.error(error); return null; }
-        return data;
+        if (error) { console.error(error); return { data: null, error }; }
+        return { data, error: null };
     }
 
     // ---------- ATTENDANCE ----------
@@ -152,8 +152,8 @@
         const { data, error } = await client.from('attendance')
             .upsert({ course_id: courseId, username, class_date: date, status }, { onConflict: 'course_id,username,class_date' })
             .select().single();
-        if (error) { console.error(error); return null; }
-        return data;
+        if (error) { console.error(error); return { data: null, error }; }
+        return { data, error: null };
     }
 
     async function getAttendance(courseId, username) {
@@ -186,8 +186,8 @@
         const { data, error } = await client.from('activities')
             .insert({ course_id: courseId || null, title, description, due_at: dueAt, created_by: createdBy })
             .select().single();
-        if (error) { console.error(error); return null; }
-        return data;
+        if (error) { console.error(error); return { data: null, error }; }
+        return { data, error: null };
     }
 
     async function deleteActivity(activityId) {
@@ -216,8 +216,8 @@
         const { data, error } = await client.from('semester_records')
             .upsert({ username, semester, gpa, credit_hours: creditHours }, { onConflict: 'username,semester' })
             .select().single();
-        if (error) { console.error(error); return null; }
-        return data;
+        if (error) { console.error(error); return { data: null, error }; }
+        return { data, error: null };
     }
 
     window.ParallaxDB = {
